@@ -87,7 +87,10 @@ The built-in catalogue covers ~240 patterns spanning:
 
 - Cloud providers — AWS, GCP service accounts, Azure Storage,
   Azure AD client secrets, DigitalOcean, Yandex,
-  Akamai, Cloudflare Origin CA.
+  Akamai, Cloudflare Origin CA & scannable tokens (`cfk_`, `cfut_`, `cfat_`, `cfast_`),
+  Exoscale (IAM API keys & HMAC headers), Divio PAK (`divio_pak_`), Nessus / Tenable.
+- Databases & Infra — PostgreSQL (connection URIs, `PGPASSWORD`, `POSTGRES_PASSWORD`, `.pgpass`),
+  MongoDB, MySQL, Redis, RabbitMQ (AMQP), HTTP Basic Auth URLs.
 - Source forges & CI — GitHub (PAT / OAuth / app / fine-grained /
   refresh), GitLab (full token family incl. `glimt-` /
   `glagent-` / `glsoat-` / routable variants), Bitbucket,

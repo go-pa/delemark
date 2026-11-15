@@ -1990,6 +1990,66 @@ func rules() []rule {
 			expression: `secret-(?:live|test)-[A-Za-z0-9_=-]{40,50}`,
 			keywords:   []string{"secret-live-", "secret-test-"},
 		},
+
+		{
+			// exoscale-api-key. Exoscale IAM API keys start with EXO followed
+			// by 21-25 hex characters. Constrained to hex to avoid false
+			// positives on general uppercase English constants (e.g. EXOPLANET).
+			expression:    asSecretGroup(`(?P<secret>EXO[0-9a-fA-F]{21,25})\b`),
+			keywords:      []string{"EXO"},
+			caseSensitive: true,
+		},
+		{
+			// exoscale-hmac-auth. Exoscale v2 HMAC authentication header.
+			expression: `(?i)Authorization:\s*EXO2-HMAC-SHA256\s+credential=(?P<secret>[^\s,]+)`,
+			keywords:   []string{"EXO2-HMAC-SHA256"},
+		},
+		{
+			// exoscale-secret. Exoscale API secret or key in assignments.
+			expression: contextual(`exoscale`, `[A-Za-z0-9_\-]{30,60}`),
+			keywords:   []string{"exoscale"},
+		},
+		{
+			// divio-pak. Divio Personal API Key (PAK) starts with divio_pak_
+			// followed by 43 URL-safe base64 characters (256 bits entropy).
+			expression: asSecretGroup(`?P<secret>divio_pak_[0-9a-zA-Z_\-]{43}`),
+			keywords:   []string{"divio_pak_"},
+		},
+		{
+			// nessus-api-keys. Nessus/Tenable accessKey and secretKey in headers or assignments.
+			expression: `(?i)\b(?:accessKey|secretKey)\s*=\s*(?P<secret>[a-f0-9]{64})`,
+			keywords:   []string{"accesskey=", "secretkey="},
+		},
+		{
+			// nessus-contextual. Nessus API keys in assignments.
+			expression: contextual(`nessus`, `[a-f0-9]{64}`),
+			keywords:   []string{"nessus"},
+		},
+		{
+			// postgres-env-password. Standard Postgres environment variables carrying passwords.
+			expression: `(?i)\b(?:PGPASSWORD|POSTGRES_PASSWORD|POSTGRESQL_PASSWORD|PGPASS)\s*[:=]\s*["']?(?P<secret>[^\s"']+)["']?`,
+			keywords:   []string{"PGPASSWORD", "POSTGRES_PASSWORD", "POSTGRESQL_PASSWORD", "PGPASS"},
+		},
+		{
+			// postgres-pgpass. Lines in .pgpass files: hostname:port:database:username:password.
+			expression: `(?m)^(?:[a-zA-Z0-9_.-]+|\*):(?:[0-9]+|\*):(?:[a-zA-Z0-9_.-]+|\*):(?:[a-zA-Z0-9_.-]+|\*):(?P<secret>[^\r\n]+)$`,
+			keywords:   []string{":5432:", ":5433:"},
+		},
+		{
+			// cloudflare-scannable-token. Modern Cloudflare API tokens with cfk_, cfut_, cfat_, cfast_ prefixes.
+			expression: asSecretGroup(`(?P<secret>cf(?:k|ut|at|ast)_[a-zA-Z0-9]{40,})`),
+			keywords:   []string{"cfk_", "cfut_", "cfat_", "cfast_"},
+		},
+		{
+			// http-basic-auth. HTTP/HTTPS URI authority carrying user:password.
+			expression: `https?://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
+			keywords:   []string{"http://", "https://"},
+		},
+		{
+			// url-query-secret. Secret tokens passed via URL query parameters.
+			expression: `(?i)[?&](?:access_token|api_key|apikey|auth_token|x-amz-signature|x-amz-credential)=(?P<secret>[^&#\s]+)`,
+			keywords:   []string{"access_token=", "api_key=", "apikey=", "auth_token=", "x-amz-signature=", "x-amz-credential="},
+		},
 	}
 }
 
