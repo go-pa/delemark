@@ -102,24 +102,15 @@ tell which host or account was being addressed.
 
 ## Development
 
-The project is driven by [`gogo`](https://github.com/dgageot/gogo),
-a small task runner. Install it once:
+Common development commands:
 
 ```sh
-go install github.com/dgageot/gogo@latest
-```
-
-Then, from the repository root:
-
-```sh
-gogo            # default: lint + test
-gogo test       # go test ./...
-gogo test-race  # go test -race ./...
-gogo bench      # go test -bench=. -benchmem -run=^$ ./...
-gogo lint       # golangci-lint run + go.mod tidy check
-gogo format     # golangci-lint fmt
-gogo tidy       # go mod tidy
-gogo -l         # list every task with its description
+go test ./...                                   # run unit tests
+go test -race ./...                             # run tests with race detector
+go test -bench=. -benchmem -run=^$ ./...        # run benchmarks
+golangci-lint run                               # run linters
+golangci-lint fmt                               # format Go source files
+go mod tidy                                     # tidy module dependencies
 ```
 
 The linter configuration lives in [`.golangci.yml`](./.golangci.yml).

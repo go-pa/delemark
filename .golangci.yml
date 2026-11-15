@@ -129,7 +129,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/docker/portcullis)
+        - prefix(github.com/go-pa/delemark)
     gofmt:
       rewrite-rules:
         - pattern: 'interface{}'
