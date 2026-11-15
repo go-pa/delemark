@@ -1,7 +1,10 @@
 package delemark
 
 import (
+	"bufio"
+	"io"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"unsafe"
@@ -241,4 +244,82 @@ func redactSpan(m []int, secretIdx int) (start, end int) {
 		return m[2*secretIdx], m[2*secretIdx+1]
 	}
 	return m[0], m[1]
+}
+
+var reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b`)
+
+// StreamOptions configures streaming redaction.
+type StreamOptions struct {
+	RedactEmail bool
+	Marker      string // replacement marker (default: Marker "[REDACTED]")
+}
+
+// RedactWith redacts secrets and optionally email addresses with a custom marker.
+func RedactWith(text string, opts StreamOptions) string {
+	res := Redact(text)
+	marker := opts.Marker
+	if marker != "" && marker != Marker {
+		res = strings.ReplaceAll(res, Marker, marker)
+	}
+	if opts.RedactEmail {
+		if marker == "" {
+			marker = Marker
+		}
+		res = reEmail.ReplaceAllString(res, marker)
+	}
+	return res
+}
+
+// Stream reads from reader line by line, applies Redact, and writes to writer.
+func Stream(reader io.Reader, writer io.Writer) error {
+	return StreamWithOptions(reader, writer, StreamOptions{})
+}
+
+// StreamWithOptions reads from reader line by line and writes redacted content to writer with options.
+func StreamWithOptions(reader io.Reader, writer io.Writer, opts StreamOptions) error {
+	marker := opts.Marker
+	if marker == "" {
+		marker = Marker
+	}
+	bufReader := bufio.NewReader(reader)
+	inPEMBlock := false
+
+	for {
+		line, err := bufReader.ReadString('\n')
+		if len(line) > 0 {
+			if inPEMBlock {
+				if strings.Contains(line, "-----END") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
+					inPEMBlock = false
+				}
+				// Skip interior lines of multi-line private key
+			} else if strings.Contains(line, "-----BEGIN") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
+				if strings.Contains(line, "-----END") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
+					// Single line PEM
+					redacted := RedactWith(line, opts)
+					if _, writeErr := io.WriteString(writer, redacted); writeErr != nil {
+						return writeErr
+					}
+				} else {
+					// Multi-line PEM start
+					inPEMBlock = true
+					if _, writeErr := io.WriteString(writer, "-----BEGIN PRIVATE KEY-----\n"+marker+"\n-----END PRIVATE KEY-----\n"); writeErr != nil {
+						return writeErr
+					}
+				}
+			} else {
+				redacted := RedactWith(line, opts)
+				if _, writeErr := io.WriteString(writer, redacted); writeErr != nil {
+					return writeErr
+				}
+			}
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+	}
+	return nil
 }

@@ -38,18 +38,43 @@ two design constraints:
 ## Install
 
 ```sh
+# Library dependency:
 go get github.com/go-pa/delemark
+
+# CLI tool:
+go install github.com/go-pa/delemark/cmd/delemark@latest
+```
+
+## CLI Usage
+
+`delemark` reads from standard input (or file arguments) and streams redacted lines directly to standard output:
+
+```sh
+# Redact secrets from standard input:
+cat server.log | delemark
+
+# Redact secrets and email addresses:
+delemark -email < config.env
+
+# Custom replacement placeholder:
+delemark -placeholder="***" credentials.json
+
+# Live stream monitoring:
+tail -f app.log | delemark -email
 ```
 
 ## API
 
-The public surface is intentionally tiny:
+The public library interface provides both in-memory scanning and stream processing:
 
 ```go
 const Marker = "[REDACTED]"
 
-func Contains(text string) bool   // detect
-func Redact(text string) string   // scrub
+func Contains(text string) bool                           // detect
+func Redact(text string) string                           // scrub
+func RedactWith(text string, opts StreamOptions) string   // scrub with options (e.g. email, marker)
+func Stream(r io.Reader, w io.Writer) error               // stream line-by-line
+func StreamWithOptions(r io.Reader, w io.Writer, opts StreamOptions) error
 ```
 
 Both functions are safe for concurrent use. The compiled rule set and
