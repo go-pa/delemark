@@ -1,9 +1,9 @@
-package portcullis_test
+package delemark_test
 
 import (
 	"fmt"
 
-	"github.com/docker/portcullis"
+	"github.com/go-pa/delemark"
 )
 
 // ghpFixture is a syntactically valid GitHub PAT (correct CRC32 over the
@@ -14,7 +14,7 @@ var ghpFixture = "ghp_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "0uCPlr"
 func ExampleRedact() {
 	log := "Run this with token=" + ghpFixture + " please."
 
-	fmt.Println(portcullis.Redact(log))
+	fmt.Println(delemark.Redact(log))
 	// Output:
 	// Run this with token=[REDACTED] please.
 }
@@ -24,7 +24,7 @@ func ExampleRedact_connectionString() {
 	// surrounding URL stays useful for log readers.
 	uri := "postgresql://app:hunter2supersecret@db.internal:5432/orders"
 
-	fmt.Println(portcullis.Redact(uri))
+	fmt.Println(delemark.Redact(uri))
 	// Output:
 	// postgresql://app:[REDACTED]@db.internal:5432/orders
 }
@@ -33,14 +33,14 @@ func ExampleRedact_multipleSecrets() {
 	other := "ghp_" + "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" + "1rpRcy"
 	in := "first " + ghpFixture + " and second " + other + " end"
 
-	fmt.Println(portcullis.Redact(in))
+	fmt.Println(delemark.Redact(in))
 	// Output:
 	// first [REDACTED] and second [REDACTED] end
 }
 
 func ExampleContains() {
-	fmt.Println(portcullis.Contains("hello world"))
-	fmt.Println(portcullis.Contains("token=" + ghpFixture))
+	fmt.Println(delemark.Contains("hello world"))
+	fmt.Println(delemark.Contains("token=" + ghpFixture))
 	// Output:
 	// false
 	// true
@@ -54,7 +54,7 @@ func ExampleFind() {
 	in := "first " + awsKey + " then " +
 		"postgresql://app:hunter2supersecret@db.internal/orders"
 
-	for _, m := range portcullis.Find(in) {
+	for _, m := range delemark.Find(in) {
 		fmt.Printf("%d-%d: %s\n", m.Start, m.End, m.Value)
 	}
 	// Output:

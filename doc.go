@@ -31,4 +31,4 @@
 // adapted it from github.com/aquasecurity/trivy/pkg/fanal/secret,
 // extended with additional patterns for modern AI providers,
 // payment processors, and infrastructure tokens.
-package portcullis
+package delemark

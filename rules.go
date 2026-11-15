@@ -6,7 +6,7 @@
 // Copyright (c) 2025 Docker (MIT). Re-licensed here under Apache-2.0
 // per the license-compatibility allowances of the MIT License.
 
-package portcullis
+package delemark
 
 import (
 	"fmt"

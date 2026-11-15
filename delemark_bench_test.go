@@ -1,10 +1,10 @@
-package portcullis_test
+package delemark_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/docker/portcullis"
+	"github.com/go-pa/delemark"
 )
 
 // BenchmarkRedactCleanInput is the headline scenario: most messages
@@ -15,7 +15,7 @@ func BenchmarkRedactCleanInput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.Redact(text)
+		_ = delemark.Redact(text)
 	}
 }
 
@@ -28,7 +28,7 @@ func BenchmarkRedactWithSecret(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.Redact(text)
+		_ = delemark.Redact(text)
 	}
 }
 
@@ -42,7 +42,7 @@ func BenchmarkContainsCleanInput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.Contains(text)
+		_ = delemark.Contains(text)
 	}
 }
 
@@ -57,7 +57,7 @@ func BenchmarkContainsWithSecret(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.Contains(text)
+		_ = delemark.Contains(text)
 	}
 }
 
@@ -71,7 +71,7 @@ func BenchmarkFindBytesCleanInput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.FindBytes(buf)
+		_ = delemark.FindBytes(buf)
 	}
 }
 
@@ -85,6 +85,6 @@ func BenchmarkFindStringCopyCleanInput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		_ = portcullis.Find(string(buf))
+		_ = delemark.Find(string(buf))
 	}
 }

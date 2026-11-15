@@ -1,4 +1,4 @@
-package portcullis
+package delemark
 
 import (
 	"math/rand"

@@ -1,6 +1,6 @@
 // Command portcullis-scan walks a directory tree and prints every
 // secret occurrence found in regular files, as detected by
-// [portcullis.Find].
+// [delemark.Find].
 //
 // Output is grep-like, one match per line:
 //
@@ -52,7 +52,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/docker/portcullis"
+	"github.com/go-pa/delemark"
 )
 
 const (
@@ -307,7 +307,7 @@ func scanFile(path, root string, maxSize int64, scanBinary bool, out io.Writer) 
 	return true, err
 }
 
-// scanFileBytes reads path, runs [portcullis.Find] on its contents,
+// scanFileBytes reads path, runs [delemark.Find] on its contents,
 // and returns a pre-formatted output chunk (one `path:line:col: value`
 // line per match, all in one allocation). It returns nil if there
 // are no matches or the file was skipped.
@@ -319,7 +319,7 @@ func scanFileBytes(path, root string, maxSize int64, scanBinary bool) ([]byte, e
 	if !ok {
 		return nil, nil
 	}
-	matches := portcullis.FindBytes(data)
+	matches := delemark.FindBytes(data)
 	if len(matches) == 0 {
 		return nil, nil
 	}

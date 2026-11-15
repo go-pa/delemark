@@ -1,4 +1,4 @@
-package portcullis_test
+package delemark_test
 
 import (
 	"strings"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/docker/portcullis"
+	"github.com/go-pa/delemark"
 )
 
 // TestContainsRecognisesKnownTokens: parity guarantee with the
@@ -272,10 +272,10 @@ func TestContainsRecognisesKnownTokens(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Truef(t, portcullis.Contains(tc.text), "must detect %s", tc.name)
-			out := portcullis.Redact(tc.text)
+			assert.Truef(t, delemark.Contains(tc.text), "must detect %s", tc.name)
+			out := delemark.Redact(tc.text)
 			assert.NotContainsf(t, out, tc.text, "raw secret must be gone after Redact: %q", out)
-			assert.Containsf(t, out, portcullis.Marker,
+			assert.Containsf(t, out, delemark.Marker,
 				"redaction marker must appear in %q", out)
 		})
 	}
@@ -301,10 +301,10 @@ func TestPIIRedactorsMirrorMemclawValidation(t *testing.T) {
 			t.Parallel()
 
 			input := "value=" + tc.value + " end"
-			assert.Truef(t, portcullis.Contains(input), "must detect %s", tc.name)
-			out := portcullis.Redact(input)
+			assert.Truef(t, delemark.Contains(input), "must detect %s", tc.name)
+			out := delemark.Redact(input)
 			assert.NotContainsf(t, out, tc.value, "raw PII must be gone after Redact: %q", out)
-			assert.Contains(t, out, portcullis.Marker)
+			assert.Contains(t, out, delemark.Marker)
 		})
 	}
 }
@@ -326,8 +326,8 @@ func TestPIIRedactorsRejectInvalidChecksumsAndRanges(t *testing.T) {
 		"123-45-0000",                 // invalid SSN serial.
 	}
 	for _, in := range cases {
-		assert.Falsef(t, portcullis.Contains(in), "invalid PII shape must not match: %q", in)
-		assert.Equalf(t, in, portcullis.Redact(in), "invalid PII shape must pass through: %q", in)
+		assert.Falsef(t, delemark.Contains(in), "invalid PII shape must not match: %q", in)
+		assert.Equalf(t, in, delemark.Redact(in), "invalid PII shape must pass through: %q", in)
 	}
 }
 
@@ -336,8 +336,8 @@ func TestHerokuLegacyAPIKeyMatchesAtStart(t *testing.T) {
 
 	in := `heroku_api_key="01234567-89AB-CDEF-0123-456789ABCDEF"`
 
-	assert.True(t, portcullis.Contains(in))
-	out := portcullis.Redact(in)
+	assert.True(t, delemark.Contains(in))
+	out := delemark.Redact(in)
 	assert.Contains(t, out, "heroku_api_key=")
 	assert.NotContains(t, out, "01234567-89AB-CDEF-0123-456789ABCDEF")
 }
@@ -350,8 +350,8 @@ func TestAWSAccessKeyIDPrefixes(t *testing.T) {
 		"A3TAQAAAAAAAQAAAAAAA",
 	}
 	for _, token := range cases {
-		assert.Truef(t, portcullis.Contains(token), "must detect %s", token)
-		assert.Equal(t, portcullis.Marker, portcullis.Redact(token))
+		assert.Truef(t, delemark.Contains(token), "must detect %s", token)
+		assert.Equal(t, delemark.Marker, delemark.Redact(token))
 	}
 }
 
@@ -360,11 +360,11 @@ func TestRedactUsesDeduplicatedLongestSpans(t *testing.T) {
 
 	token := "glpat-" + strings.Repeat("A", 30) + ".abcdefghi"
 
-	assert.True(t, portcullis.Contains(token))
-	matches := portcullis.Find(token)
+	assert.True(t, delemark.Contains(token))
+	matches := delemark.Find(token)
 	require.Len(t, matches, 1)
 	assert.Equal(t, token, matches[0].Value)
-	assert.Equal(t, portcullis.Marker, portcullis.Redact(token))
+	assert.Equal(t, delemark.Marker, delemark.Redact(token))
 }
 
 // TestRedactDetectsBareUnquotedSecrets exercises the rules whose
@@ -399,12 +399,12 @@ func TestRedactDetectsBareUnquotedSecrets(t *testing.T) {
 			// The same value emitted bare (CLI / log) and quoted
 			// (config file) must both be redacted.
 			for _, in := range []string{tc.token, `"` + tc.token + `"`, `'` + tc.token + `'`} {
-				assert.Truef(t, portcullis.Contains(in),
+				assert.Truef(t, delemark.Contains(in),
 					"must detect %s in %q", tc.name, in)
-				out := portcullis.Redact(in)
+				out := delemark.Redact(in)
 				assert.NotContainsf(t, out, tc.token,
 					"raw secret must be gone after Redact: %q", out)
-				assert.Containsf(t, out, portcullis.Marker,
+				assert.Containsf(t, out, delemark.Marker,
 					"redaction marker must appear in %q", out)
 			}
 		})
@@ -430,9 +430,9 @@ func TestRedactDoesNotSwallowAdjacentTextAfterSlackRotatingToken(t *testing.T) {
 	token := "xoxe-" + strings.Repeat("a", 320)
 	input := token + ".api.slack.com"
 
-	out := portcullis.Redact(input)
+	out := delemark.Redact(input)
 
-	assert.Containsf(t, out, portcullis.Marker,
+	assert.Containsf(t, out, delemark.Marker,
 		"a Slack rotating token must still be redacted: %q", out)
 	assert.Containsf(t, out, "api.slack.com",
 		"adjacent hostname must NOT be swallowed by the rotating-token regex: %q", out)
@@ -483,9 +483,9 @@ func TestRedactDoesNotSwallowAdjacentTextAfterPrefixedTokens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			input := tc.token + suffix
-			out := portcullis.Redact(input)
+			out := delemark.Redact(input)
 
-			assert.Containsf(t, out, portcullis.Marker,
+			assert.Containsf(t, out, delemark.Marker,
 				"%s must still be redacted: %q", tc.name, out)
 			assert.Containsf(t, out, suffix,
 				"adjacent text past the body cap must NOT be swallowed by %s: %q",
@@ -510,12 +510,12 @@ func TestContainsIgnoresHarmlessText(t *testing.T) {
 		"the api key is documented in README",
 	}
 	for _, in := range cases {
-		assert.Falsef(t, portcullis.Contains(in), "must not flag %q", in)
+		assert.Falsef(t, delemark.Contains(in), "must not flag %q", in)
 	}
 }
 
 // TestRedactReplacesSecretSpan: the secret material is replaced by
-// [portcullis.Marker] while the surrounding text (including the
+// [delemark.Marker] while the surrounding text (including the
 // keyword that triggered the match) is preserved. We don't assert
 // the exact match boundary because the rule's leading-context group
 // may consume the preceding space — only the secret value must
@@ -526,9 +526,9 @@ func TestRedactReplacesSecretSpan(t *testing.T) {
 	const ghp = "ghp_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "0uCPlr"
 	in := "Run this with token=" + ghp + " and you're set"
 
-	out := portcullis.Redact(in)
+	out := delemark.Redact(in)
 
-	assert.Containsf(t, out, portcullis.Marker, "redaction marker must appear: %q", out)
+	assert.Containsf(t, out, delemark.Marker, "redaction marker must appear: %q", out)
 	assert.NotContainsf(t, out, ghp, "raw secret must be gone: %q", out)
 	assert.Contains(t, out, "Run this with token=", "non-secret prefix preserved")
 	assert.Contains(t, out, "and you're set", "non-secret suffix preserved")
@@ -539,11 +539,11 @@ func TestRedactReplacesSecretSpan(t *testing.T) {
 func TestRedactIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	once := portcullis.Redact("dckr_pat_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAA in logs")
-	twice := portcullis.Redact(once)
+	once := delemark.Redact("dckr_pat_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAA in logs")
+	twice := delemark.Redact(once)
 
 	assert.Equal(t, once, twice)
-	assert.False(t, portcullis.Contains(once),
+	assert.False(t, delemark.Contains(once),
 		"redacted output must no longer trip Contains")
 }
 
@@ -559,7 +559,7 @@ func TestRedactPreservesNonMatchingText(t *testing.T) {
 		"please refactor the helper into its own file",
 	}
 	for _, in := range cases {
-		assert.Equalf(t, in, portcullis.Redact(in), "must not modify %q", in)
+		assert.Equalf(t, in, delemark.Redact(in), "must not modify %q", in)
 	}
 }
 
@@ -573,11 +573,11 @@ func TestRedactHandlesMultipleSecretsInOneInput(t *testing.T) {
 	const b = "ghp_" + "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" + "1rpRcy"
 	in := "first " + a + " and second " + b + " end"
 
-	out := portcullis.Redact(in)
+	out := delemark.Redact(in)
 
 	require.NotContains(t, out, a)
 	require.NotContains(t, out, b)
-	assert.Equal(t, 2, strings.Count(out, portcullis.Marker),
+	assert.Equal(t, 2, strings.Count(out, delemark.Marker),
 		"both secrets must be redacted: %q", out)
 	assert.Contains(t, out, "first ")
 	assert.Contains(t, out, " and second ")
@@ -585,8 +585,8 @@ func TestRedactHandlesMultipleSecretsInOneInput(t *testing.T) {
 }
 
 // TestMarkerIsNotASecret locks in the safety property that makes
-// [portcullis.Redact] idempotent and the keyword pre-filter hoist in
-// [portcullis.Redact] sound: the literal Marker must not match any
+// [delemark.Redact] idempotent and the keyword pre-filter hoist in
+// [delemark.Redact] sound: the literal Marker must not match any
 // detection rule. If a future rule were added whose keyword overlapped
 // "[REDACTED]", redaction would either recurse forever or amplify the
 // marker on every pass, and any downstream pipeline that calls Redact
@@ -594,16 +594,16 @@ func TestRedactHandlesMultipleSecretsInOneInput(t *testing.T) {
 func TestMarkerIsNotASecret(t *testing.T) {
 	t.Parallel()
 
-	assert.False(t, portcullis.Contains(portcullis.Marker),
+	assert.False(t, delemark.Contains(delemark.Marker),
 		"the redaction marker must not match any rule")
-	assert.Equal(t, portcullis.Marker,
-		portcullis.Redact(portcullis.Marker),
+	assert.Equal(t, delemark.Marker,
+		delemark.Redact(delemark.Marker),
 		"redacting the marker must be a no-op")
 
 	// Embedded in arbitrary surrounding text the marker still must not
 	// match — some rules only fire mid-string after a non-word boundary.
-	assert.Equal(t, "prefix "+portcullis.Marker+" suffix",
-		portcullis.Redact("prefix "+portcullis.Marker+" suffix"))
+	assert.Equal(t, "prefix "+delemark.Marker+" suffix",
+		delemark.Redact("prefix "+delemark.Marker+" suffix"))
 }
 
 // TestRedactDetectsSecretsAcrossWordBoundaries exercises the change
@@ -647,12 +647,12 @@ func TestRedactDetectsSecretsAcrossWordBoundaries(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Truef(t, portcullis.Contains(tc.input),
+			assert.Truef(t, delemark.Contains(tc.input),
 				"must detect secret in %q", tc.input)
-			out := portcullis.Redact(tc.input)
+			out := delemark.Redact(tc.input)
 			assert.NotContainsf(t, out, tc.secret,
 				"raw secret must be gone after Redact: %q", out)
-			assert.Containsf(t, out, portcullis.Marker,
+			assert.Containsf(t, out, delemark.Marker,
 				"redaction marker must appear in %q", out)
 		})
 	}
@@ -671,7 +671,7 @@ func TestFindDeduplicatesOverlappingMatches(t *testing.T) {
 	in := "eyJrIjoi" + strings.Repeat("A", 80) + ".eyJzdWIiOiJ0ZXN0In0." +
 		"SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 
-	matches := portcullis.Find(in)
+	matches := delemark.Find(in)
 	require.Len(t, matches, 1, "overlapping rules must collapse to one match: %v", matches)
 	assert.Equal(t, 0, matches[0].Start)
 	assert.Equal(t, "eyJrIjoi"+strings.Repeat("A", 80), matches[0].Value)
@@ -686,7 +686,7 @@ func TestFindKeepsDistinctSecrets(t *testing.T) {
 	b := "dckr_pat_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	in := "first " + a + " then " + b
 
-	matches := portcullis.Find(in)
+	matches := delemark.Find(in)
 	require.Len(t, matches, 2)
 	assert.Equal(t, a, matches[0].Value)
 	assert.Equal(t, b, matches[1].Value)
@@ -705,8 +705,8 @@ func TestGitHubTokensRequireChecksum(t *testing.T) {
 		"github_pat_" + strings.Repeat("a", 22) + "_" + strings.Repeat("b", 59),
 	}
 	for _, token := range cases {
-		assert.Falsef(t, portcullis.Contains(token), "invalid checksum must not match: %q", token)
-		assert.Equalf(t, token, portcullis.Redact(token), "invalid checksum must pass through: %q", token)
+		assert.Falsef(t, delemark.Contains(token), "invalid checksum must not match: %q", token)
+		assert.Equalf(t, token, delemark.Redact(token), "invalid checksum must pass through: %q", token)
 	}
 }
 
@@ -718,8 +718,8 @@ func TestGitHubStatelessTokenRequiresValidJWT(t *testing.T) {
 	// pass through untouched.
 	in := "ghs_eyAAAAAAAAAA.eyBBBBBBBBBB.CCCCCCCCCC"
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestGitHubPlaceholderFalsePositive(t *testing.T) {
@@ -727,8 +727,8 @@ func TestGitHubPlaceholderFalsePositive(t *testing.T) {
 
 	in := "ghp_${OPENFGA_DATASTORE_PASSWORD}"
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestStructuredSecretsMustDecode(t *testing.T) {
@@ -739,8 +739,8 @@ func TestStructuredSecretsMustDecode(t *testing.T) {
 		".dockerconfigjson: eyJub3QiOiJkb2NrZXIgY29uZmlnIn0=",
 	}
 	for _, in := range cases {
-		assert.False(t, portcullis.Contains(in))
-		assert.Equal(t, in, portcullis.Redact(in))
+		assert.False(t, delemark.Contains(in))
+		assert.Equal(t, in, delemark.Redact(in))
 	}
 }
 
@@ -749,8 +749,8 @@ func TestDiscordWebhooksRequirePlausibleSnowflake(t *testing.T) {
 
 	in := "https://discord.com/api/webhooks/18446744073709551615/" + strings.Repeat("a", 60)
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestAgeSecretKeysRequireValidBech32Checksum(t *testing.T) {
@@ -758,8 +758,8 @@ func TestAgeSecretKeysRequireValidBech32Checksum(t *testing.T) {
 
 	in := "AGE-SECRET-KEY-1" + strings.Repeat("Q", 58)
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestCloudflareAPIRuleRejectsSlugs(t *testing.T) {
@@ -767,8 +767,8 @@ func TestCloudflareAPIRuleRejectsSlugs(t *testing.T) {
 
 	in := "'cloudflare-digital-experience-monitoring',"
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestAWSBedrockKeysMustDecodeToBedrockEnvelope(t *testing.T) {
@@ -776,8 +776,8 @@ func TestAWSBedrockKeysMustDecodeToBedrockEnvelope(t *testing.T) {
 
 	in := "ABSKMCAk4WokBQ6h5EXDyutr1m9t94xbtTJMWt5nOd3Y3Tz073NzSuLWZM+9r88xzL5mXR76ZKv/o4KfM5wkB1qb9Habfw4+Zhs3a2GvuvLe3qdOghel0R7dUev0mt5pNm7eaVu1ut9cOePRJsy4hAHGtbEc+kR2nVAw+odag5/vmlXeW2ONfliLgMgExNu+r+SGBpiiKoig+AncpLRJwtJg990KlOXAh8YaNrG/YY5wVBeGFSk4MUINwYkDlNAfuoqCUIVSwav0OR7Bl"
 
-	assert.False(t, portcullis.Contains(in))
-	assert.Equal(t, in, portcullis.Redact(in))
+	assert.False(t, delemark.Contains(in))
+	assert.Equal(t, in, delemark.Redact(in))
 }
 
 func TestJWTsMustBeJSONAndSigned(t *testing.T) {
@@ -786,16 +786,16 @@ func TestJWTsMustBeJSONAndSigned(t *testing.T) {
 	unsigned := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
 		"eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ." +
 		"SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-	assert.False(t, portcullis.Contains(unsigned))
-	assert.Equal(t, unsigned, portcullis.Redact(unsigned))
+	assert.False(t, delemark.Contains(unsigned))
+	assert.Equal(t, unsigned, delemark.Redact(unsigned))
 }
 
 func TestAWSAccessKeyIDsMustEncodePlausibleAccountID(t *testing.T) {
 	t.Parallel()
 
 	invalid := "AKIAIOSFODNN7EXAMPLE"
-	assert.False(t, portcullis.Contains(invalid))
-	assert.Equal(t, invalid, portcullis.Redact(invalid))
+	assert.False(t, delemark.Contains(invalid))
+	assert.Equal(t, invalid, delemark.Redact(invalid))
 }
 
 // TestConnectionStringRulesIgnoreTemplatePlaceholders pins the
@@ -830,9 +830,9 @@ func TestConnectionStringRulesIgnoreTemplatePlaceholders(t *testing.T) {
 	for _, scheme := range schemes {
 		for _, ph := range placeholders {
 			in := scheme + ph + "@host.example.com/db"
-			assert.Falsef(t, portcullis.Contains(in),
+			assert.Falsef(t, delemark.Contains(in),
 				"templated placeholder must not match: %q", in)
-			assert.Equalf(t, in, portcullis.Redact(in),
+			assert.Equalf(t, in, delemark.Redact(in),
 				"templated placeholder must pass through unchanged: %q", in)
 		}
 	}
@@ -880,9 +880,9 @@ func TestCaseSensitiveRulesIgnoreLowercaseLookalikes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Falsef(t, portcullis.Contains(tc.text),
+			assert.Falsef(t, delemark.Contains(tc.text),
 				"case-folded keyword must not fire CS rule on %q", tc.text)
-			assert.Equalf(t, tc.text, portcullis.Redact(tc.text),
+			assert.Equalf(t, tc.text, delemark.Redact(tc.text),
 				"text must pass through unchanged: %q", tc.text)
 		})
 	}
@@ -898,7 +898,7 @@ func TestFindBytesMatchesFind(t *testing.T) {
 	in := "prefix ghp_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "0uCPlr" + " mid dckr_pat_" +
 		"AAAAAAAAAAAAAAAAAAAAAAAAAAA" + " suffix"
 
-	assert.Equal(t, portcullis.Find(in), portcullis.FindBytes([]byte(in)))
+	assert.Equal(t, delemark.Find(in), delemark.FindBytes([]byte(in)))
 }
 
 // TestFindBytesEmptyInputs: nil and empty slices must return nil
@@ -906,8 +906,8 @@ func TestFindBytesMatchesFind(t *testing.T) {
 func TestFindBytesEmptyInputs(t *testing.T) {
 	t.Parallel()
 
-	assert.Nil(t, portcullis.FindBytes(nil))
-	assert.Nil(t, portcullis.FindBytes([]byte{}))
+	assert.Nil(t, delemark.FindBytes(nil))
+	assert.Nil(t, delemark.FindBytes([]byte{}))
 }
 
 // TestContainsBytesMatchesContains pins the parity of the []byte
@@ -922,7 +922,7 @@ func TestContainsBytesMatchesContains(t *testing.T) {
 		"ghp_" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" + "0uCPlr",
 	}
 	for _, in := range cases {
-		assert.Equalf(t, portcullis.Contains(in), portcullis.ContainsBytes([]byte(in)),
+		assert.Equalf(t, delemark.Contains(in), delemark.ContainsBytes([]byte(in)),
 			"parity must hold for %q", in)
 	}
 }
@@ -940,13 +940,13 @@ func TestRedactScalesLinearly(t *testing.T) {
 
 	// Warm caches (rule compilation, regex DFA) so the first sample
 	// doesn't pay a one-time tax that skews the ratio.
-	_ = portcullis.Redact("warmup")
+	_ = delemark.Redact("warmup")
 
 	measure := func(text string) time.Duration {
 		const iters = 50
 		start := time.Now()
 		for range iters {
-			_ = portcullis.Redact(text)
+			_ = delemark.Redact(text)
 		}
 		return time.Since(start) / iters
 	}

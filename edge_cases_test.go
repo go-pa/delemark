@@ -1,4 +1,4 @@
-package portcullis_test
+package delemark_test
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/docker/portcullis"
+	"github.com/go-pa/delemark"
 )
 
 // TestNoisyKeywordsFalsePositives verifies that common text patterns
@@ -59,7 +59,7 @@ func TestNoisyKeywordsFalsePositives(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			result := portcullis.Contains(tc.text)
+			result := delemark.Contains(tc.text)
 			assert.Falsef(t, result, "should not detect secret in: %q", tc.text)
 		})
 	}
@@ -76,7 +76,7 @@ func TestDiscordTokenPrefixes(t *testing.T) {
 		t.Run("prefix_"+prefix, func(t *testing.T) {
 			t.Parallel()
 			token := prefix + strings.Repeat("A", 22) + "." + strings.Repeat("B", 6) + "." + strings.Repeat("C", 30)
-			assert.Truef(t, portcullis.Contains(token),
+			assert.Truef(t, delemark.Contains(token),
 				"should detect Discord token with prefix %s", prefix)
 		})
 	}
@@ -141,9 +141,9 @@ func TestConnectionStringContextPreservation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.True(t, portcullis.Contains(tc.input), "should detect secret")
+			assert.True(t, delemark.Contains(tc.input), "should detect secret")
 
-			redacted := portcullis.Redact(tc.input)
+			redacted := delemark.Redact(tc.input)
 
 			for _, must := range tc.mustHave {
 				assert.Containsf(t, redacted, must,

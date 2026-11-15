@@ -1,4 +1,4 @@
-package portcullis
+package delemark
 
 // kwMask is a fixed-size bitset over keyword indices, used to record
 // which patterns occurred in a scanned input and which keywords each

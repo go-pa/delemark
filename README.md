@@ -1,25 +1,28 @@
-# portcullis
+# delemark
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/docker/portcullis.svg)](https://pkg.go.dev/github.com/docker/portcullis)
+[![Go Reference](https://pkg.go.dev/badge/github.com/go-pa/delemark.svg)](https://pkg.go.dev/github.com/go-pa/delemark)
 
-A tiny Go library that detects and redacts API tokens, cloud
+`delemark` is a tiny Go library that detects and redacts API tokens, cloud
 credentials, and other secret material in arbitrary text.
 
-```go
-import "github.com/docker/portcullis"
+> [!NOTE]
+> `delemark` is a fork of Docker's [`portcullis`](https://github.com/docker/portcullis).
 
-clean := portcullis.Redact("Run this with token=ghp_1234567890abcdef1234567890abcdef1234 please.")
+```go
+import "github.com/go-pa/delemark"
+
+clean := delemark.Redact("Run this with token=ghp_1234567890abcdef1234567890abcdef1234 please.")
 // → "Run this with token=[REDACTED] please."
 
-portcullis.Contains("not a secret")                                   // false
-portcullis.Contains("token=ghp_1234567890abcdef1234567890abcdef1234") // true
+delemark.Contains("not a secret")                                   // false
+delemark.Contains("token=ghp_1234567890abcdef1234567890abcdef1234") // true
 ```
 
 ## Why
 
 LLM agents, log pipelines, error reporters, and anything else that
 echoes user-controlled or tool-produced text back into a third party
-need to scrub credentials before they leak. `portcullis` is the
+need to scrub credentials before they leak. `delemark` is the
 extracted, dependency-free core of the redactor used by
 [`docker-agent`](https://github.com/docker/docker-agent), built around
 two design constraints:
@@ -35,7 +38,7 @@ two design constraints:
 ## Install
 
 ```sh
-go get github.com/docker/portcullis
+go get github.com/go-pa/delemark
 ```
 
 ## API
