@@ -246,7 +246,7 @@ func (r *Redactor) findMatches(text string) []Match {
 			matches = append(matches, Match{Start: s, End: e, Value: value})
 		}
 	}
-	return matches
+	return keepEscapes(text, matches)
 }
 
 // sortMatches orders matches by Start ascending, breaking ties by
@@ -426,6 +426,39 @@ func mergeOverlapping(matches []Match) []Match {
 		}
 	}
 	return out
+}
+
+// keepEscape returns end, the end of a span, moved back off a backslash
+// that escapes the byte after the span. Replacing that backslash would
+// leave the byte unescaped: a JSON string holding `secret\"` would end
+// at the quote. Whether the last backslash escapes the next byte goes
+// by the whole run of backslashes ending at end, those before the span
+// too. A span that ends on whole escapes, an even run, stays as it is.
+func keepEscape(text string, end int) int {
+	run := 0
+	for i := end - 1; i >= 0 && text[i] == '\\'; i-- {
+		run++
+	}
+	if run%2 == 1 {
+		return end - 1
+	}
+	return end
+}
+
+// keepEscapes moves the end of every match off a backslash, as
+// keepEscape does, and drops a match that leaves nothing. It runs apart
+// from the rule loop, and only on inputs with matches.
+func keepEscapes(text string, matches []Match) []Match {
+	kept := matches[:0]
+	for _, m := range matches {
+		if end := keepEscape(text, m.End); end != m.End {
+			m.End, m.Value = end, text[m.Start:end]
+		}
+		if m.End > m.Start {
+			kept = append(kept, m)
+		}
+	}
+	return kept
 }
 
 // redactSpan returns the [start, end) byte offsets that should be
