@@ -102,7 +102,7 @@ func TestCLIListRules(t *testing.T) {
 	require.Equal(t, 0, code)
 	require.Contains(t, stdout.String(), "aws-access-key-id aws\n")
 	require.Contains(t, stdout.String(), "private-key crypto-key\n")
-	require.Contains(t, stdout.String(), "us-ssn pii\n")
+	require.Contains(t, stdout.String(), "us-ssn pii,false-positive-high\n")
 }
 
 func TestCLIListTags(t *testing.T) {

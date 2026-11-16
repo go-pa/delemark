@@ -42,8 +42,10 @@ type config struct {
 
 // WithSkip leaves rules out, each named by its id or by one of its
 // tags: "pii" for payment cards, IBANs and US SSNs, a vendor's name,
-// such as "github", for all of its rules, or a category such as
-// "connection-string" or "webhook". [Rules] and [Tags] list them.
+// such as "github", for all of its rules, a category such as
+// "connection-string" or "webhook", or "false-positive-high" for the
+// US SSN and payment card rules, the rules most likely to redact text
+// that is no secret. [Rules] and [Tags] list them.
 // Rules added to the catalogue later run unless they are skipped too.
 // The names of every WithSkip add up.
 func WithSkip(names ...string) Option {

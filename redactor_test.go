@@ -84,7 +84,8 @@ func TestRulesAndTags(t *testing.T) {
 	assert.True(t, slices.IsSorted(tags))
 	assert.Equal(t, slices.Compact(slices.Clone(tags)), tags)
 	assert.Subset(t, tags, []string{"pii", "aws", "github", "gitlab", "new-relic", "openai",
-		"connection-string", "webhook", "crypto-key", "jwt", "url-credentials"})
+		"connection-string", "webhook", "crypto-key", "jwt", "url-credentials",
+		"false-positive-high"})
 	for _, name := range append(ids, delemark.Tags()...) {
 		_, err := delemark.New(delemark.WithSkip(name))
 		assert.NoErrorf(t, err, "skipping %q", name)

@@ -122,6 +122,13 @@ also a rule id:
 - `pii` for payment cards, IBANs and US SSNs. Those are the only rules
   without a keyword, so with `pii` skipped an input without any keyword
   runs no regex at all.
+- `false-positive-high` for the US SSN and payment card rules, the
+  rules most likely to redact text that is no secret: they match a
+  number by its shape alone. The US SSN rule takes most 9-digit
+  numbers, such as byte counts, durations in nanoseconds and the
+  fractions of RFC 3339 timestamps. The payment card rule takes one in
+  ten long numbers with a card's prefix, such as decimal trace ids, and
+  columns of numbers split by single spaces.
 
 The package-level functions and a `Redactor`'s methods are safe for
 concurrent use. The compiled rule set and its Aho–Corasick automaton

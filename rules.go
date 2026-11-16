@@ -2444,7 +2444,7 @@ func rules() []rule {
 			expression: `(?P<secret>\b(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2}|3[47]\d{2}|6(?:011|5\d{2})|3(?:0[0-5]|[68]\d)\d)(?:[-\s]?\d){9,15}\b)`,
 			validator:  validLuhn,
 			prefilter:  maybeCreditCard,
-			tags:       []string{"pii"},
+			tags:       []string{"pii", "false-positive-high"},
 		},
 		{
 			// iban. Mirrors memclaw's IBAN detector: broad ISO 13616
@@ -2466,7 +2466,7 @@ func rules() []rule {
 			expression: `(?P<secret>\b\d{3}[- ]?\d{2}[- ]?\d{4}\b)`,
 			validator:  validUSSSN,
 			prefilter:  maybeSSN,
-			tags:       []string{"pii"},
+			tags:       []string{"pii", "false-positive-high"},
 		},
 
 		{
