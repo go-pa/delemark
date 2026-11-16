@@ -2,11 +2,14 @@ package delemark
 
 import (
 	"bufio"
+	"cmp"
+	"fmt"
 	"io"
 	"math"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -27,6 +30,164 @@ type Match struct {
 	Value string
 }
 
+// An Option configures a [Redactor] made by [New].
+type Option func(*config)
+
+// config is what the options of [New] set.
+type config struct {
+	skip        []string
+	marker      string
+	redactEmail bool
+}
+
+// WithSkip leaves rules out, each named by its id or by one of its
+// tags: "pii" for payment cards, IBANs and US SSNs, a vendor's name,
+// such as "github", for all of its rules, or a category such as
+// "connection-string" or "webhook". [Rules] and [Tags] list them.
+// Rules added to the catalogue later run unless they are skipped too.
+// The names of every WithSkip add up.
+func WithSkip(names ...string) Option {
+	return func(c *config) { c.skip = append(c.skip, names...) }
+}
+
+// WithMarker replaces every redacted span with marker rather than
+// [Marker]; empty is [Marker]. A marker that some rule matches makes
+// [Redactor.Redact] no longer idempotent.
+func WithMarker(marker string) Option {
+	return func(c *config) { c.marker = marker }
+}
+
+// WithEmail redacts email addresses as well, when redact is true.
+// [Redactor.Find] and [Redactor.Contains] do not look for them.
+func WithEmail(redact bool) Option {
+	return func(c *config) { c.redactEmail = redact }
+}
+
+// A Redactor detects and redacts secrets with the rules the options of
+// [New] leave in. It is safe for concurrent use. The package-level
+// functions use one with every rule, and so does the zero Redactor.
+type Redactor struct {
+	// ac is the keyword pre-filter of every rule, nil in the zero
+	// Redactor.
+	ac    *acAutomaton
+	rules []*compiledRule
+	// alwaysRun is whether a rule of rules bypasses the keyword
+	// pre-filter. Without one, an input without a keyword runs no regex.
+	alwaysRun bool
+	// collapsePEM is whether the private-key rule is among rules, which
+	// [Redactor.Stream] then applies across lines.
+	collapsePEM bool
+	marker      string
+	redactEmail bool
+}
+
+// privateKeyRule is the id of the rule [Redactor.Stream] applies to
+// multi-line private keys.
+const privateKeyRule = "private-key"
+
+// New returns a Redactor configured by opts, applied in order. Without
+// options it runs every rule, as the package-level functions do. It
+// fails when a name given to [WithSkip] is neither a rule's id nor a
+// tag.
+func New(opts ...Option) (*Redactor, error) {
+	var c config
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&c)
+		}
+	}
+	rs := compiledRuleSet()
+	// used records which names of c.skip named a rule.
+	used := make(map[string]bool, len(c.skip))
+	for _, name := range c.skip {
+		used[name] = false
+	}
+	r := &Redactor{
+		ac:          rs.ac,
+		rules:       make([]*compiledRule, 0, len(rs.rules)),
+		marker:      cmp.Or(c.marker, Marker),
+		redactEmail: c.redactEmail,
+	}
+	for i := range rs.rules {
+		cr := &rs.rules[i]
+		skipped := false
+		if len(used) > 0 {
+			if _, ok := used[cr.id]; ok {
+				used[cr.id], skipped = true, true
+			}
+			for _, tag := range cr.tags {
+				if _, ok := used[tag]; ok {
+					used[tag], skipped = true, true
+				}
+			}
+		}
+		if skipped {
+			continue
+		}
+		r.rules = append(r.rules, cr)
+		if cr.kwBits.empty() {
+			r.alwaysRun = true
+		}
+		if cr.id == privateKeyRule {
+			r.collapsePEM = true
+		}
+	}
+	for _, name := range c.skip {
+		if !used[name] {
+			return nil, fmt.Errorf("delemark: no rule or tag is named %q", name)
+		}
+	}
+	return r, nil
+}
+
+// defaultRedactor runs every rule. It is built on first use, like the
+// rule set it shares.
+var defaultRedactor = sync.OnceValue(func() *Redactor {
+	r, err := New()
+	if err != nil {
+		panic(err)
+	}
+	return r
+})
+
+// orDefault returns r, or the default Redactor when r is the zero
+// Redactor.
+func (r *Redactor) orDefault() *Redactor {
+	if r.ac == nil {
+		return defaultRedactor()
+	}
+	return r
+}
+
+// A Rule describes one of the built-in rules.
+type Rule struct {
+	// ID names the rule in [WithSkip].
+	ID string
+	// Tags are the categories the rule is in, which [WithSkip] also
+	// accepts.
+	Tags []string
+}
+
+// Rules returns the built-in rules, in the order they run.
+func Rules() []Rule {
+	rs := compiledRuleSet()
+	out := make([]Rule, len(rs.rules))
+	for i, r := range rs.rules {
+		out[i] = Rule{ID: r.id, Tags: slices.Clone(r.tags)}
+	}
+	return out
+}
+
+// Tags returns the tags of the built-in rules, sorted, each once.
+func Tags() []string {
+	var out []string
+	for _, r := range compiledRuleSet().rules {
+		out = append(out, r.tags...)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // Find returns every secret span detected in text, in left-to-right
 // order. Overlapping matches are deduplicated: when two rules flag
 // overlapping spans (e.g. a Grafana legacy `eyJrIjoi…` token whose
@@ -37,38 +198,42 @@ type Match struct {
 // Find is safe for concurrent use. The returned slice is freshly
 // allocated and owned by the caller.
 func Find(text string) []Match {
-	return dedupOverlapping(findMatches(text))
+	return defaultRedactor().Find(text)
+}
+
+// Find is [Find] with r's rules.
+func (r *Redactor) Find(text string) []Match {
+	r = r.orDefault()
+	return dedupOverlapping(r.findMatches(text))
 }
 
 // scanPrelude runs the shared pre-filter behind [Find], [Redact],
 // and [Contains]: the Aho–Corasick pass over text. ok is false when
 // no rule could possibly match — empty input, or no keyword hit and
-// no always-run rules — letting callers return without touching any
-// regex.
-func scanPrelude(text string) (rs *ruleSet, found kwMask, ok bool) {
+// no always-run rule among r's — letting callers return without
+// touching any regex.
+func (r *Redactor) scanPrelude(text string) (found kwMask, ok bool) {
 	if text == "" {
-		return nil, kwMask{}, false
+		return kwMask{}, false
 	}
-	rs = compiledRuleSet()
-	found = rs.ac.scan(text)
-	if found.empty() && !rs.hasAlwaysRun {
-		return nil, kwMask{}, false
+	found = r.ac.scan(text)
+	if found.empty() && !r.alwaysRun {
+		return kwMask{}, false
 	}
-	return rs, found, true
+	return found, true
 }
 
-func findMatches(text string) []Match {
-	rs, found, ok := scanPrelude(text)
+func (r *Redactor) findMatches(text string) []Match {
+	found, ok := r.scanPrelude(text)
 	if !ok {
 		return nil
 	}
 	var matches []Match
-	for i := range rs.rules {
-		r := &rs.rules[i]
-		if !r.passes(found, text) {
+	for _, cr := range r.rules {
+		if !cr.passes(found, text) {
 			continue
 		}
-		compiled := r.compile()
+		compiled := cr.compile()
 		for _, m := range compiled.re.FindAllStringSubmatchIndex(text, -1) {
 			s, e := redactSpan(m, compiled.secretIdx)
 			if e <= s {
@@ -129,16 +294,21 @@ func dedupOverlapping(matches []Match) []Match {
 // Contains reports whether text matches any built-in secret rule.
 // It is safe for concurrent use.
 func Contains(text string) bool {
-	rs, found, ok := scanPrelude(text)
+	return defaultRedactor().Contains(text)
+}
+
+// Contains is [Contains] with r's rules.
+func (r *Redactor) Contains(text string) bool {
+	r = r.orDefault()
+	found, ok := r.scanPrelude(text)
 	if !ok {
 		return false
 	}
-	for i := range rs.rules {
-		r := &rs.rules[i]
-		if !r.passes(found, text) {
+	for _, cr := range r.rules {
+		if !cr.passes(found, text) {
 			continue
 		}
-		compiled := r.compile()
+		compiled := cr.compile()
 		if compiled.validator == nil {
 			if compiled.re.MatchString(text) {
 				return true
@@ -163,19 +333,29 @@ func Contains(text string) bool {
 // chunk) you'd otherwise pass through string(b) — that conversion
 // always copies, FindBytes does not.
 func FindBytes(b []byte) []Match {
+	return defaultRedactor().FindBytes(b)
+}
+
+// FindBytes is [FindBytes] with r's rules.
+func (r *Redactor) FindBytes(b []byte) []Match {
 	if len(b) == 0 {
 		return nil
 	}
-	return Find(unsafe.String(unsafe.SliceData(b), len(b)))
+	return r.Find(unsafe.String(unsafe.SliceData(b), len(b)))
 }
 
 // ContainsBytes is like [Contains] but accepts a []byte without
 // copying it. b is read but never mutated.
 func ContainsBytes(b []byte) bool {
+	return defaultRedactor().ContainsBytes(b)
+}
+
+// ContainsBytes is [ContainsBytes] with r's rules.
+func (r *Redactor) ContainsBytes(b []byte) bool {
 	if len(b) == 0 {
 		return false
 	}
-	return Contains(unsafe.String(unsafe.SliceData(b), len(b)))
+	return r.Contains(unsafe.String(unsafe.SliceData(b), len(b)))
 }
 
 // Redact returns a copy of text with every detected secret span
@@ -187,7 +367,23 @@ func ContainsBytes(b []byte) bool {
 // Idempotent: [Marker] does not match any rule, so calling Redact
 // twice yields the same result. Safe for concurrent use.
 func Redact(text string) string {
-	matches := mergeOverlapping(findMatches(text))
+	return defaultRedactor().Redact(text)
+}
+
+// Redact is [Redact] with r's rules, replacing spans with r's marker,
+// and redacting email addresses too if r does.
+func (r *Redactor) Redact(text string) string {
+	r = r.orDefault()
+	res := replaceSpans(text, mergeOverlapping(r.findMatches(text)), r.marker)
+	if r.redactEmail {
+		res = reEmail.ReplaceAllLiteralString(res, r.marker)
+	}
+	return res
+}
+
+// replaceSpans returns text with every span of matches, which are
+// sorted and do not overlap, replaced by marker.
+func replaceSpans(text string, matches []Match, marker string) string {
 	if len(matches) == 0 {
 		return text
 	}
@@ -195,8 +391,8 @@ func Redact(text string) string {
 	for _, m := range matches {
 		size -= m.End - m.Start
 	}
-	if len(matches) <= (math.MaxInt-size)/len(Marker) {
-		size += len(matches) * len(Marker)
+	if marker == "" || len(matches) <= (math.MaxInt-size)/len(marker) {
+		size += len(matches) * len(marker)
 	} else {
 		// Let the builder handle growth if the final size overflows.
 		size = len(text)
@@ -206,7 +402,7 @@ func Redact(text string) string {
 	cursor := 0
 	for _, m := range matches {
 		b.WriteString(text[cursor:m.Start])
-		b.WriteString(Marker)
+		b.WriteString(marker)
 		cursor = m.End
 	}
 	b.WriteString(text[cursor:])
@@ -249,66 +445,74 @@ func redactSpan(m []int, secretIdx int) (start, end int) {
 var reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b`)
 
 // StreamOptions configures streaming redaction.
+//
+// Deprecated: Use [New] with [WithEmail] and [WithMarker], which can
+// also skip rules.
 type StreamOptions struct {
 	RedactEmail bool
 	Marker      string // replacement marker (default: Marker "[REDACTED]")
 }
 
+// fromStreamOptions returns the Redactor the deprecated functions taking opts
+// stand for: every rule, with opts' marker and email setting.
+func fromStreamOptions(opts StreamOptions) *Redactor {
+	r := *defaultRedactor()
+	r.marker = cmp.Or(opts.Marker, Marker)
+	r.redactEmail = opts.RedactEmail
+	return &r
+}
+
 // RedactWith redacts secrets and optionally email addresses with a custom marker.
+//
+// Deprecated: Use [Redactor.Redact] of a Redactor made by [New].
 func RedactWith(text string, opts StreamOptions) string {
-	res := Redact(text)
-	marker := opts.Marker
-	if marker != "" && marker != Marker {
-		res = strings.ReplaceAll(res, Marker, marker)
-	}
-	if opts.RedactEmail {
-		if marker == "" {
-			marker = Marker
-		}
-		res = reEmail.ReplaceAllString(res, marker)
-	}
-	return res
+	return fromStreamOptions(opts).Redact(text)
 }
 
 // Stream reads from reader line by line, applies Redact, and writes to writer.
 func Stream(reader io.Reader, writer io.Writer) error {
-	return StreamWithOptions(reader, writer, StreamOptions{})
+	return defaultRedactor().Stream(reader, writer)
 }
 
 // StreamWithOptions reads from reader line by line and writes redacted content to writer with options.
+//
+// Deprecated: Use [Redactor.Stream] of a Redactor made by [New].
 func StreamWithOptions(reader io.Reader, writer io.Writer, opts StreamOptions) error {
-	marker := opts.Marker
-	if marker == "" {
-		marker = Marker
-	}
+	return fromStreamOptions(opts).Stream(reader, writer)
+}
+
+// isPEMLine reports whether line has a private key's BEGIN or END
+// armour, as named by dash.
+func isPEMLine(line, dash string) bool {
+	return strings.Contains(line, dash) && strings.Contains(strings.ToUpper(line), "PRIVATE KEY")
+}
+
+// Stream reads from reader line by line and writes the lines to writer,
+// redacted by r. Unless the private-key rule is skipped, interior lines
+// of a multi-line private key are left out, the key replaced by r's
+// marker.
+func (r *Redactor) Stream(reader io.Reader, writer io.Writer) error {
+	r = r.orDefault()
 	bufReader := bufio.NewReader(reader)
 	inPEMBlock := false
 
 	for {
 		line, err := bufReader.ReadString('\n')
 		if len(line) > 0 {
-			if inPEMBlock {
-				if strings.Contains(line, "-----END") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
-					inPEMBlock = false
-				}
+			out := ""
+			switch {
+			case inPEMBlock:
 				// Skip interior lines of multi-line private key
-			} else if strings.Contains(line, "-----BEGIN") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
-				if strings.Contains(line, "-----END") && strings.Contains(strings.ToUpper(line), "PRIVATE KEY") {
-					// Single line PEM
-					redacted := RedactWith(line, opts)
-					if _, writeErr := io.WriteString(writer, redacted); writeErr != nil {
-						return writeErr
-					}
-				} else {
-					// Multi-line PEM start
-					inPEMBlock = true
-					if _, writeErr := io.WriteString(writer, "-----BEGIN PRIVATE KEY-----\n"+marker+"\n-----END PRIVATE KEY-----\n"); writeErr != nil {
-						return writeErr
-					}
-				}
-			} else {
-				redacted := RedactWith(line, opts)
-				if _, writeErr := io.WriteString(writer, redacted); writeErr != nil {
+				inPEMBlock = !isPEMLine(line, "-----END")
+			case r.collapsePEM && isPEMLine(line, "-----BEGIN") && !isPEMLine(line, "-----END"):
+				// Multi-line PEM start
+				inPEMBlock = true
+				out = "-----BEGIN PRIVATE KEY-----\n" + r.marker + "\n-----END PRIVATE KEY-----\n"
+			default:
+				out = r.Redact(line)
+			}
+			if out != "" {
+				if _, writeErr := io.WriteString(writer, out); writeErr != nil {
 					return writeErr
 				}
 			}

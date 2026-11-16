@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-pa/delemark"
 )
 
 func TestCLIBasicStdin(t *testing.T) {
@@ -67,4 +69,43 @@ func TestCLIHelp(t *testing.T) {
 	code := run([]string{"-help"}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code)
 	require.Contains(t, stdout.String(), "Usage:")
+}
+
+func TestCLISkipFlag(t *testing.T) {
+	const line = "card 4111 1111 1111 1111 db postgres://app:s3cr3tpass@db/app\n"
+
+	var stdout, stderr bytes.Buffer
+	code := run(nil, strings.NewReader(line), &stdout, &stderr)
+	require.Equal(t, 0, code)
+	require.Equal(t, "card [REDACTED] db postgres://app:[REDACTED]@db/app\n", stdout.String())
+
+	stdout.Reset()
+	code = run([]string{"-skip", "pii"}, strings.NewReader(line), &stdout, &stderr)
+	require.Equal(t, 0, code)
+	require.Empty(t, stderr.String())
+	require.Equal(t, "card 4111 1111 1111 1111 db postgres://app:[REDACTED]@db/app\n", stdout.String())
+
+	stdout.Reset()
+	code = run([]string{"-skip", "pii,nope"}, strings.NewReader(line), &stdout, &stderr)
+	require.Equal(t, 2, code)
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), `no rule or tag is named "nope"`)
+}
+
+func TestCLIListRules(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-list-rules"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code)
+	require.Contains(t, stdout.String(), "aws-access-key-id aws\n")
+	require.Contains(t, stdout.String(), "private-key crypto-key\n")
+	require.Contains(t, stdout.String(), "us-ssn pii\n")
+}
+
+func TestCLIListTags(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-list-tags"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code)
+	require.Empty(t, stderr.String())
+	require.Equal(t, strings.Join(delemark.Tags(), "\n")+"\n", stdout.String())
+	require.Contains(t, stdout.String(), "\npii\n")
 }

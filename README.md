@@ -59,6 +59,18 @@ delemark -email < config.env
 # Custom replacement placeholder:
 delemark -placeholder="***" credentials.json
 
+# Redact credentials only, leaving payment cards, IBANs and US SSNs:
+delemark -skip pii < app.log
+
+# Leave out one rule, by its id:
+delemark -skip us-ssn < app.log
+
+# List the rule ids and their tags:
+delemark -list-rules
+
+# List the tags:
+delemark -list-tags
+
 # Live stream monitoring:
 tail -f app.log | delemark -email
 ```
@@ -72,14 +84,49 @@ const Marker = "[REDACTED]"
 
 func Contains(text string) bool                           // detect
 func Redact(text string) string                           // scrub
-func RedactWith(text string, opts StreamOptions) string   // scrub with options (e.g. email, marker)
+func RedactWith(text string, opts StreamOptions) string   // deprecated: use New
 func Stream(r io.Reader, w io.Writer) error               // stream line-by-line
-func StreamWithOptions(r io.Reader, w io.Writer, opts StreamOptions) error
+func StreamWithOptions(r io.Reader, w io.Writer, opts StreamOptions) error // deprecated: use New
 ```
 
-Both functions are safe for concurrent use. The compiled rule set and
-its Aho–Corasick automaton are built once on first call and shared
-across goroutines.
+To leave rules out, build a `Redactor` once and use its methods, which
+mirror the package-level functions:
+
+```go
+r, err := delemark.New(delemark.WithSkip("pii"))
+clean := r.Redact(line)
+
+func New(opts ...Option) (*Redactor, error)
+func WithSkip(names ...string) Option  // rule ids or tags to leave out
+func WithEmail(redact bool) Option     // redact email addresses too
+func WithMarker(marker string) Option  // default Marker
+
+func (r *Redactor) Redact(text string) string
+func (r *Redactor) Find(text string) []Match
+func (r *Redactor) Contains(text string) bool
+func (r *Redactor) Stream(reader io.Reader, writer io.Writer) error
+
+func Rules() []Rule   // every rule's ID and Tags, in the order they run
+func Tags() []string  // every tag, sorted
+```
+
+`New` fails on a name that is neither a rule id nor a tag, so a typo
+does not silently leave a rule running. Rule ids follow the gitleaks
+ids where there is one. Every rule has at least one tag, and no tag is
+also a rule id:
+
+- its vendor's name, such as `github`, `gitlab`, `aws` or `openai`;
+- a category, for rules of no one vendor or that share a shape:
+  `connection-string`, `webhook`, `crypto-key`, `jwt`,
+  `url-credentials`;
+- `pii` for payment cards, IBANs and US SSNs. Those are the only rules
+  without a keyword, so with `pii` skipped an input without any keyword
+  runs no regex at all.
+
+The package-level functions and a `Redactor`'s methods are safe for
+concurrent use. The compiled rule set and its Aho–Corasick automaton
+are built once on first call and shared by every `Redactor` and
+goroutine.
 
 ## What it detects
 

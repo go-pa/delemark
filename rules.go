@@ -35,6 +35,11 @@ const (
 // `od` in plain text. Keeping the keyword case-sensitive cuts the
 // AC false-pass rate for those rules from ~30% of files to ~5%.
 type rule struct {
+	// id names the rule in [WithSkip] and [Rules].
+	id string
+	// tags are categories of rules, which [WithSkip] also accepts.
+	// Every rule has at least one: its vendor's name.
+	tags          []string
 	expression    string
 	keywords      []string
 	caseSensitive bool
@@ -103,6 +108,8 @@ func rules() []rule {
 			// data, and crypto test vectors. The validator decodes the
 			// embedded 12-digit AWS account ID for modern access-key IDs,
 			// rejecting strings whose base32 body cannot encode one.
+			id:            "aws-access-key-id",
+			tags:          []string{"aws"},
 			expression:    asSecretGroup(`(?P<secret>(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})` + quote),
 			keywords:      []string{"AKIA", "AGPA", "AIDA", "AROA", "AIPA", "ANPA", "ANVA", "ASIA", "A3T"},
 			caseSensitive: true,
@@ -110,23 +117,31 @@ func rules() []rule {
 		},
 		{
 			// aws-secret-access-key
+			id:         "aws-secret-access-key",
+			tags:       []string{"aws"},
 			expression: fmt.Sprintf(`(?i)%s%s(sec(ret)?)?_?(access)?_?key%s%s%s(?P<secret>[A-Za-z0-9\/\+=]{40})%s`, quote, aws, quote, connect, quote, quote),
 			keywords:   []string{"key"},
 		},
 		{
 			// github-pat
+			id:         "github-pat",
+			tags:       []string{"github"},
 			expression: asSecretGroup(`?P<secret>ghp_[0-9a-zA-Z]{36}`),
 			keywords:   []string{"ghp_"},
 			validator:  validGitHubChecksum,
 		},
 		{
 			// github-oauth
+			id:         "github-oauth",
+			tags:       []string{"github"},
 			expression: asSecretGroup(`?P<secret>gho_[0-9a-zA-Z]{36}`),
 			keywords:   []string{"gho_"},
 			validator:  validGitHubChecksum,
 		},
 		{
 			// github-app-token
+			id:         "github-app-token",
+			tags:       []string{"github"},
 			expression: asSecretGroup(`?P<secret>(ghu|ghs)_[0-9a-zA-Z]{36}`),
 			keywords:   []string{"ghu_", "ghs_"},
 			validator:  validGitHubChecksum,
@@ -139,6 +154,8 @@ func rules() []rule {
 			// validator decodes the JWT envelope (header / payload / signed)
 			// so this rule won't fire on arbitrary `ghs_eyXXX.eyYYY.ZZZ`-shaped
 			// strings that happen to match the regex.
+			id:            "github-app-stateless-token",
+			tags:          []string{"github"},
 			expression:    `ghs_ey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`,
 			keywords:      []string{"ghs_ey"},
 			caseSensitive: true,
@@ -146,38 +163,52 @@ func rules() []rule {
 		},
 		{
 			// github-refresh-token
+			id:         "github-refresh-token",
+			tags:       []string{"github"},
 			expression: asSecretGroup(`?P<secret>ghr_[0-9a-zA-Z]{36}`),
 			keywords:   []string{"ghr_"},
 			validator:  validGitHubChecksum,
 		},
 		{
 			// github-fine-grained-pat
+			id:         "github-fine-grained-pat",
+			tags:       []string{"github"},
 			expression: asSecretGroup(`?P<secret>github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}`),
 			keywords:   []string{"github_pat_"},
 			validator:  validGitHubChecksum,
 		},
 		{
 			// gitlab-pat
+			id:         "gitlab-pat",
+			tags:       []string{"gitlab"},
 			expression: asSecretGroup(`?P<secret>glpat-[0-9a-zA-Z\-\_]{20}`),
 			keywords:   []string{"glpat-"},
 		},
 		{
 			// hugging-face-access-token
+			id:         "hugging-face-access-token",
+			tags:       []string{"huggingface"},
 			expression: asSecretGroup(`?P<secret>hf_[A-Za-z0-9]{34,40}`),
 			keywords:   []string{"hf_"},
 		},
 		{
 			// private-key
+			id:         "private-key",
+			tags:       []string{"crypto-key"},
 			expression: `(?i)-----\s*?BEGIN[ A-Z0-9_-]*?PRIVATE KEY( BLOCK)?\s*?-----[\s]*?(?P<secret>[A-Za-z0-9=+/\\\r\n][A-Za-z0-9=+/\\\s]+)[\s]*?-----\s*?END[ A-Z0-9_-]*? PRIVATE KEY( BLOCK)?\s*?-----`,
 			keywords:   []string{"-----"},
 		},
 		{
 			// shopify-token
+			id:         "shopify-token",
+			tags:       []string{"shopify"},
 			expression: `shp(ss|at|ca|pa)_[a-fA-F0-9]{32}`,
 			keywords:   []string{"shpss_", "shpat_", "shpca_", "shppa_"},
 		},
 		{
 			// slack-access-token
+			id:         "slack-access-token",
+			tags:       []string{"slack"},
 			expression: asSecretGroup(`?P<secret>xox[baprs]-([0-9a-zA-Z]{10,48})`),
 			keywords:   []string{"xoxb-", "xoxa-", "xoxp-", "xoxr-", "xoxs-"},
 		},
@@ -188,21 +219,29 @@ func rules() []rule {
 			// intentionally NOT redacted: Stripe publishable keys are
 			// designed to be embedded in client-side code and are not
 			// considered secret.
+			id:         "stripe-secret-token",
+			tags:       []string{"stripe"},
 			expression: asSecretGroup(`?P<secret>(?i)sk_(test|live|prod)_[0-9a-z]{10,32}`),
 			keywords:   []string{"sk_test_", "sk_live_", "sk_prod_"},
 		},
 		{
 			// heroku-api-key
+			id:         "heroku-api-key",
+			tags:       []string{"heroku"},
 			expression: `(?i)(?P<key>heroku[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})['\"]`,
 			keywords:   []string{"heroku"},
 		},
 		{
 			// slack-web-hook
+			id:         "slack-web-hook",
+			tags:       []string{"slack", "webhook"},
 			expression: `https:\/\/hooks.slack.com\/services\/[A-Za-z0-9+\/]{44,48}`,
 			keywords:   []string{"hooks.slack.com"},
 		},
 		{
 			// twilio-api-key
+			id:            "twilio-api-key",
+			tags:          []string{"twilio"},
 			expression:    `SK[0-9a-fA-F]{32}`,
 			keywords:      []string{"SK"},
 			caseSensitive: true,
@@ -211,6 +250,8 @@ func rules() []rule {
 			// age-secret-key. Age uses Bech32 with a checksum; the
 			// validator decodes the key and requires the 32-byte X25519
 			// secret payload so typo-shaped strings do not match.
+			id:            "age-secret-key",
+			tags:          []string{"age", "crypto-key"},
 			expression:    `AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}`,
 			keywords:      []string{"AGE-SECRET-KEY-1"},
 			caseSensitive: true,
@@ -218,113 +259,157 @@ func rules() []rule {
 		},
 		{
 			// facebook-token
+			id:         "facebook-token",
+			tags:       []string{"facebook"},
 			expression: `(?i)(?P<key>facebook[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{32})['\"]`,
 			keywords:   []string{"facebook"},
 		},
 		{
 			// twitter-token
+			id:         "twitter-token",
+			tags:       []string{"twitter"},
 			expression: `(?i)(?P<key>twitter[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{35,44})['\"]`,
 			keywords:   []string{"twitter"},
 		},
 		{
 			// adobe-client-id
+			id:         "adobe-client-id",
+			tags:       []string{"adobe"},
 			expression: `(?i)(?P<key>adobe[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{32})['\"]`,
 			keywords:   []string{"adobe"},
 		},
 		{
 			// adobe-client-secret
+			id:         "adobe-client-secret",
+			tags:       []string{"adobe"},
 			expression: `(p8e-)(?i)[a-z0-9]{32}`,
 			keywords:   []string{"p8e-"},
 		},
 		{
 			// alibaba-secret-key
+			id:         "alibaba-secret-key",
+			tags:       []string{"alibaba"},
 			expression: `(?i)(?P<key>alibaba[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{30})['\"]`,
 			keywords:   []string{"alibaba"},
 		},
 		{
 			// asana-client-id
+			id:         "asana-client-id",
+			tags:       []string{"asana"},
 			expression: `(?i)(?P<key>asana[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[0-9]{16})['\"]`,
 			keywords:   []string{"asana"},
 		},
 		{
 			// asana-client-secret
+			id:         "asana-client-secret",
+			tags:       []string{"asana"},
 			expression: `(?i)(?P<key>asana[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{32})['\"]`,
 			keywords:   []string{"asana"},
 		},
 		{
 			// atlassian-api-token
+			id:         "atlassian-api-token",
+			tags:       []string{"atlassian"},
 			expression: `(?i)(?P<key>atlassian[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{24})['\"]`,
 			keywords:   []string{"atlassian"},
 		},
 		{
 			// bitbucket-client-id
+			id:         "bitbucket-client-id",
+			tags:       []string{"bitbucket"},
 			expression: `(?i)(?P<key>bitbucket[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{32})['\"]`,
 			keywords:   []string{"bitbucket"},
 		},
 		{
 			// bitbucket-client-secret
+			id:         "bitbucket-client-secret",
+			tags:       []string{"bitbucket"},
 			expression: `(?i)(?P<key>bitbucket[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9_\-]{64})['\"]`,
 			keywords:   []string{"bitbucket"},
 		},
 		{
 			// beamer-api-token
+			id:         "beamer-api-token",
+			tags:       []string{"beamer"},
 			expression: `(?i)(?P<key>beamer[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>b_[a-z0-9=_\-]{44})['\"]`,
 			keywords:   []string{"beamer"},
 		},
 		{
 			// clojars-api-token
+			id:            "clojars-api-token",
+			tags:          []string{"clojars"},
 			expression:    `(CLOJARS_)(?i)[a-z0-9]{60}`,
 			keywords:      []string{"CLOJARS_"},
 			caseSensitive: true,
 		},
 		{
 			// contentful-delivery-api-token
+			id:         "contentful-delivery-api-token",
+			tags:       []string{"contentful"},
 			expression: `(?i)(?P<key>contentful[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9\-=_]{43})['\"]`,
 			keywords:   []string{"contentful"},
 		},
 		{
 			// databricks-api-token
+			id:         "databricks-api-token",
+			tags:       []string{"databricks"},
 			expression: `dapi[a-h0-9]{32}`,
 			keywords:   []string{"dapi"},
 		},
 		{
 			// discord-api-token
+			id:         "discord-api-token",
+			tags:       []string{"discord"},
 			expression: `(?i)(?P<key>discord[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-h0-9]{64})['\"]`,
 			keywords:   []string{"discord"},
 		},
 		{
 			// discord-client-id
+			id:         "discord-client-id",
+			tags:       []string{"discord"},
 			expression: `(?i)(?P<key>discord[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[0-9]{18})['\"]`,
 			keywords:   []string{"discord"},
 		},
 		{
 			// discord-client-secret
+			id:         "discord-client-secret",
+			tags:       []string{"discord"},
 			expression: `(?i)(?P<key>discord[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9=_\-]{32})['\"]`,
 			keywords:   []string{"discord"},
 		},
 		{
 			// doppler-api-token. Personal tokens are `dp.pt.<43 chars>`;
 			// the prefix is unique to Doppler so quotes aren't required.
+			id:         "doppler-api-token",
+			tags:       []string{"doppler"},
 			expression: `(dp\.pt\.)(?i)[a-z0-9]{43}`,
 			keywords:   []string{"dp.pt."},
 		},
 		{
 			// dropbox-api-secret
+			id:         "dropbox-api-secret",
+			tags:       []string{"dropbox"},
 			expression: `(?i)(dropbox[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"]([a-z0-9]{15})['\"]`,
 			keywords:   []string{"dropbox"},
 		},
 		{
 			// dropbox-short-lived-api-token
+			id:         "dropbox-short-lived-api-token",
+			tags:       []string{"dropbox"},
 			expression: `(?i)(dropbox[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](sl\.[a-z0-9\-=_]{135})['\"]`,
 			keywords:   []string{"dropbox"},
 		},
 		{
 			// dropbox-long-lived-api-token
+			id:         "dropbox-long-lived-api-token",
+			tags:       []string{"dropbox"},
 			expression: `(?i)(dropbox[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"][a-z0-9]{11}(AAAAAAAAAA)[a-z0-9\-_=]{43}['\"]`,
 			keywords:   []string{"dropbox"},
 		},
 		{
 			// duffel-api-token
+			id:         "duffel-api-token",
+			tags:       []string{"duffel"},
 			expression: `['\"]duffel_(test|live)_(?i)[a-z0-9_-]{43}['\"]`,
 			keywords:   []string{"duffel_test_", "duffel_live_"},
 		},
@@ -332,6 +417,8 @@ func rules() []rule {
 			// dynatrace-api-token. `dt0c01.` is the documented version
 			// prefix; combined with the fixed 24+64 hex body it doesn't
 			// need quote anchoring to stay specific.
+			id:         "dynatrace-api-token",
+			tags:       []string{"dynatrace"},
 			expression: `dt0c01\.(?i)[a-z0-9]{24}\.[a-z0-9]{64}`,
 			keywords:   []string{"dt0c01."},
 		},
@@ -339,49 +426,67 @@ func rules() []rule {
 			// easypost-api-token. `EZAK` (production) / `EZTK` (test)
 			// prefixes plus the fixed 54-char body are specific enough
 			// that surrounding quotes aren't required.
+			id:            "easypost-api-token",
+			tags:          []string{"easypost"},
 			expression:    `EZ[AT]K(?i)[a-z0-9]{54}`,
 			keywords:      []string{"EZAK", "EZTK"},
 			caseSensitive: true,
 		},
 		{
 			// fastly-api-token
+			id:         "fastly-api-token",
+			tags:       []string{"fastly"},
 			expression: `(?i)(?P<key>fastly[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9\-=_]{32})['\"]`,
 			keywords:   []string{"fastly"},
 		},
 		{
 			// finicity-client-secret
+			id:         "finicity-client-secret",
+			tags:       []string{"finicity"},
 			expression: `(?i)(?P<key>finicity[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{20})['\"]`,
 			keywords:   []string{"finicity"},
 		},
 		{
 			// finicity-api-token
+			id:         "finicity-api-token",
+			tags:       []string{"finicity"},
 			expression: `(?i)(?P<key>finicity[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{32})['\"]`,
 			keywords:   []string{"finicity"},
 		},
 		{
 			// flutterwave-public-key
+			id:            "flutterwave-public-key",
+			tags:          []string{"flutterwave"},
 			expression:    asSecretGroup(`?P<secret>FLW(PUB|SEC)K_TEST-(?i)[a-h0-9]{32}-X`),
 			keywords:      []string{"FLWSECK_TEST-", "FLWPUBK_TEST-"},
 			caseSensitive: true,
 		},
 		{
 			// flutterwave-enc-key
+			id:            "flutterwave-enc-key",
+			tags:          []string{"flutterwave"},
 			expression:    asSecretGroup(`?P<secret>FLWSECK_TEST[a-h0-9]{12}`),
 			keywords:      []string{"FLWSECK_TEST"},
 			caseSensitive: true,
 		},
 		{
 			// frameio-api-token
+			id:         "frameio-api-token",
+			tags:       []string{"frameio"},
 			expression: `fio-u-(?i)[a-z0-9\-_=]{64}`,
 			keywords:   []string{"fio-u-"},
 		},
 		{
 			// gocardless-api-token
+			id:         "gocardless-api-token",
+			tags:       []string{"gocardless"},
 			expression: `['\"]live_(?i)[a-z0-9\-_=]{40}['\"]`,
 			keywords:   []string{"live_"},
 		},
 		{
 			// grafana-api-token
+			id:            "grafana-api-token",
+			tags:          []string{"grafana"},
 			expression:    `['\"]?eyJrIjoi(?i)[a-z0-9\-_=]{72,92}['\"]?`,
 			keywords:      []string{"eyJrIjoi"},
 			caseSensitive: true,
@@ -390,26 +495,36 @@ func rules() []rule {
 			// hashicorp-tf-api-token. The `<14 chars>.atlasv1.<body>`
 			// shape is documented and unique to Terraform Cloud, so the
 			// quote anchors that the upstream rule used aren't needed.
+			id:         "hashicorp-tf-api-token",
+			tags:       []string{"hashicorp"},
 			expression: `(?i)[a-z0-9]{14}\.atlasv1\.[a-z0-9\-_=]{60,70}`,
 			keywords:   []string{"atlasv1."},
 		},
 		{
 			// hubspot-api-token
+			id:         "hubspot-api-token",
+			tags:       []string{"hubspot"},
 			expression: `(?i)(?P<key>hubspot[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-h0-9]{8}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{12})['\"]`,
 			keywords:   []string{"hubspot"},
 		},
 		{
 			// intercom-api-token
+			id:         "intercom-api-token",
+			tags:       []string{"intercom"},
 			expression: `(?i)(?P<key>intercom[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9=_]{60})['\"]`,
 			keywords:   []string{"intercom"},
 		},
 		{
 			// intercom-client-secret
+			id:         "intercom-client-secret",
+			tags:       []string{"intercom"},
 			expression: `(?i)(?P<key>intercom[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-h0-9]{8}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{12})['\"]`,
 			keywords:   []string{"intercom"},
 		},
 		{
 			// ionic-api-token
+			id:         "ionic-api-token",
+			tags:       []string{"ionic"},
 			expression: `(?i)(ionic[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](ion_[a-z0-9]{42})['\"]`,
 			keywords:   []string{"ionic"},
 		},
@@ -417,6 +532,8 @@ func rules() []rule {
 			// jwt-token. Regex catches compact JWT-looking text; the
 			// validator then base64url-decodes header and payload, requires
 			// JSON in both segments, and rejects unsigned `alg=none` JWTs.
+			id:            "jwt-token",
+			tags:          []string{"jwt"},
 			expression:    asSecretGroup(`?P<secret>ey[a-zA-Z0-9_-]{17,}\.ey[a-zA-Z0-9_-]{17,}\.[a-zA-Z0-9_-]{10,}`),
 			keywords:      []string{".eyJ"},
 			caseSensitive: true,
@@ -424,51 +541,71 @@ func rules() []rule {
 		},
 		{
 			// linear-api-token
+			id:         "linear-api-token",
+			tags:       []string{"linear"},
 			expression: `lin_api_(?i)[a-z0-9]{40}`,
 			keywords:   []string{"lin_api_"},
 		},
 		{
 			// linear-client-secret
+			id:         "linear-client-secret",
+			tags:       []string{"linear"},
 			expression: `(?i)(?P<key>linear[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{32})['\"]`,
 			keywords:   []string{"linear"},
 		},
 		{
 			// lob-api-key
+			id:         "lob-api-key",
+			tags:       []string{"lob"},
 			expression: `(?i)(?P<key>lob[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>(live|test)_[a-f0-9]{35})['\"]`,
 			keywords:   []string{"lob"},
 		},
 		{
 			// lob-pub-api-key
+			id:         "lob-pub-api-key",
+			tags:       []string{"lob"},
 			expression: `(?i)(?P<key>lob[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>(test|live)_pub_[a-f0-9]{31})['\"]`,
 			keywords:   []string{"lob"},
 		},
 		{
 			// mailchimp-api-key
+			id:         "mailchimp-api-key",
+			tags:       []string{"mailchimp"},
 			expression: `(?i)(?P<key>mailchimp[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-f0-9]{32}-us20)['\"]`,
 			keywords:   []string{"mailchimp"},
 		},
 		{
 			// mailgun-token
+			id:         "mailgun-token",
+			tags:       []string{"mailgun"},
 			expression: `(?i)(?P<key>mailgun[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>(pub)?key-[a-f0-9]{32})['\"]`,
 			keywords:   []string{"mailgun"},
 		},
 		{
 			// mailgun-signing-key
+			id:         "mailgun-signing-key",
+			tags:       []string{"mailgun"},
 			expression: `(?i)(?P<key>mailgun[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-h0-9]{32}-[a-h0-9]{8}-[a-h0-9]{8})['\"]`,
 			keywords:   []string{"mailgun"},
 		},
 		{
 			// mapbox-api-token
+			id:         "mapbox-api-token",
+			tags:       []string{"mapbox"},
 			expression: `(?i)(pk\.[a-z0-9]{60}\.[a-z0-9]{22})`,
 			keywords:   []string{"pk."},
 		},
 		{
 			// messagebird-api-token
+			id:         "messagebird-api-token",
+			tags:       []string{"messagebird"},
 			expression: `(?i)(?P<key>messagebird[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{25})['\"]`,
 			keywords:   []string{"messagebird"},
 		},
 		{
 			// messagebird-client-id
+			id:         "messagebird-client-id",
+			tags:       []string{"messagebird"},
 			expression: `(?i)(?P<key>messagebird[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-h0-9]{8}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{4}-[a-h0-9]{12})['\"]`,
 			keywords:   []string{"messagebird"},
 		},
@@ -476,18 +613,24 @@ func rules() []rule {
 			// new-relic-user-api-key. `NRAK-` is the documented prefix;
 			// combined with the fixed 27-char body it stays specific
 			// without the surrounding quotes.
+			id:            "new-relic-user-api-key",
+			tags:          []string{"new-relic"},
 			expression:    `NRAK-[A-Z0-9]{27}`,
 			keywords:      []string{"NRAK-"},
 			caseSensitive: true,
 		},
 		{
 			// new-relic-user-api-id
+			id:         "new-relic-user-api-id",
+			tags:       []string{"new-relic"},
 			expression: `(?i)(?P<key>newrelic[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[A-Z0-9]{64})['\"]`,
 			keywords:   []string{"newrelic"},
 		},
 		{
 			// new-relic-browser-api-token. `NRJS-` is the documented
 			// prefix; the fixed 19-char body keeps the rule specific.
+			id:            "new-relic-browser-api-token",
+			tags:          []string{"new-relic"},
 			expression:    `NRJS-[a-f0-9]{19}`,
 			keywords:      []string{"NRJS-"},
 			caseSensitive: true,
@@ -498,16 +641,22 @@ func rules() []rule {
 			// this catches CLI output (`npm token list`) and `.npmrc`
 			// shapes (`//registry.npmjs.org/:_authToken=npm_…`) alongside
 			// the JSON/YAML config form the upstream rule expected.
+			id:         "npm-access-token",
+			tags:       []string{"npm"},
 			expression: `npm_(?i)[a-z0-9]{36}`,
 			keywords:   []string{"npm_"},
 		},
 		{
 			// planetscale-password
+			id:         "planetscale-password",
+			tags:       []string{"planetscale"},
 			expression: `pscale_pw_(?i)[a-z0-9\-_\.]{43}`,
 			keywords:   []string{"pscale_pw_"},
 		},
 		{
 			// planetscale-api-token
+			id:         "planetscale-api-token",
+			tags:       []string{"planetscale"},
 			expression: `pscale_tkn_(?i)[a-z0-9\-_\.]{43}`,
 			keywords:   []string{"pscale_tkn_"},
 		},
@@ -518,64 +667,88 @@ func rules() []rule {
 			// used `[ou][ru]` which also matched a non-existent
 			// `packagist_urt_` shape that wasn't in the keyword list,
 			// creating a regex/keyword mismatch.
+			id:         "private-packagist-token",
+			tags:       []string{"packagist"},
 			expression: `packagist_(uut|out|ort)_(?i)[a-f0-9]{68}`,
 			keywords:   []string{"packagist_uut_", "packagist_out_", "packagist_ort_"},
 		},
 		{
 			// postman-api-token
+			id:            "postman-api-token",
+			tags:          []string{"postman"},
 			expression:    `PMAK-(?i)[a-f0-9]{24}\-[a-f0-9]{34}`,
 			keywords:      []string{"PMAK-"},
 			caseSensitive: true,
 		},
 		{
 			// pulumi-api-token
+			id:         "pulumi-api-token",
+			tags:       []string{"pulumi"},
 			expression: `pul-[a-f0-9]{40}`,
 			keywords:   []string{"pul-"},
 		},
 		{
 			// rubygems-api-token
+			id:         "rubygems-api-token",
+			tags:       []string{"rubygems"},
 			expression: `rubygems_[a-f0-9]{48}`,
 			keywords:   []string{"rubygems_"},
 		},
 		{
 			// sendgrid-api-token
+			id:            "sendgrid-api-token",
+			tags:          []string{"sendgrid"},
 			expression:    `SG\.(?i)[a-z0-9_\-\.]{66}`,
 			keywords:      []string{"SG."},
 			caseSensitive: true,
 		},
 		{
 			// sendinblue-api-token
+			id:         "sendinblue-api-token",
+			tags:       []string{"sendinblue"},
 			expression: `xkeysib-[a-f0-9]{64}\-(?i)[a-z0-9]{16}`,
 			keywords:   []string{"xkeysib-"},
 		},
 		{
 			// shippo-api-token
+			id:         "shippo-api-token",
+			tags:       []string{"shippo"},
 			expression: `shippo_(live|test)_[a-f0-9]{40}`,
 			keywords:   []string{"shippo_live_", "shippo_test_"},
 		},
 		{
 			// linkedin-client-secret
+			id:         "linkedin-client-secret",
+			tags:       []string{"linkedin"},
 			expression: `(?i)(?P<key>linkedin[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z]{16})['\"]`,
 			keywords:   []string{"linkedin"},
 		},
 		{
 			// linkedin-client-id
+			id:         "linkedin-client-id",
+			tags:       []string{"linkedin"},
 			expression: `(?i)(?P<key>linkedin[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{14})['\"]`,
 			keywords:   []string{"linkedin"},
 		},
 		{
 			// twitch-api-token
+			id:         "twitch-api-token",
+			tags:       []string{"twitch"},
 			expression: `(?i)(?P<key>twitch[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}['\"](?P<secret>[a-z0-9]{30})['\"]`,
 			keywords:   []string{"twitch"},
 		},
 		{
 			// typeform-api-token
+			id:         "typeform-api-token",
+			tags:       []string{"typeform"},
 			expression: `(?i)(?P<key>typeform[a-z0-9_ .\-,]{0,25})(=|>|:=|\|\|:|<=|=>|:).{0,5}(?P<secret>tfp_[a-z0-9\-_\.=]{59})`,
 			keywords:   []string{"typeform"},
 		},
 		{
 			// dockerconfig-secret. Kubernetes docker config secret data
 			// is base64-encoded Docker config JSON with an `auths` object.
+			id:         "dockerconfig-secret",
+			tags:       []string{"docker"},
 			expression: `(?i)(\.(dockerconfigjson|dockercfg):\s*\|*\s*(?P<secret>(ey|ew)+[A-Za-z0-9/+=]+))`,
 			keywords:   []string{"dockerc"},
 			validator:  validDockerConfigSecret,
@@ -585,6 +758,8 @@ func rules() []rule {
 			// is followed by a strictly alphanumeric 27-char body —
 			// per Docker's PAT issuance, no dashes / dots / underscores
 			// appear in the body, so the char class stays tight.
+			id:         "docker-hub-personal-access-token",
+			tags:       []string{"docker"},
 			expression: `dckr_pat_[A-Za-z0-9]{27}`,
 			keywords:   []string{"dckr_pat_"},
 		},
@@ -593,6 +768,8 @@ func rules() []rule {
 			// Docker Hub admin console for organization-scoped API
 			// access; same `<prefix>_<27 alnum>` shape as the PAT but
 			// with the `dckr_oat_` prefix.
+			id:         "docker-hub-organization-access-token",
+			tags:       []string{"docker"},
 			expression: `dckr_oat_[A-Za-z0-9]{27}`,
 			keywords:   []string{"dckr_oat_"},
 		},
@@ -610,6 +787,8 @@ func rules() []rule {
 			// (base64 for "OpenAI") between two long alphanumeric runs.
 			// That marker keeps both the keyword filter and the regex
 			// extremely specific.
+			id:            "openai-api-key",
+			tags:          []string{"openai"},
 			expression:    `sk-[A-Za-z0-9_-]{20,}T3BlbkFJ[A-Za-z0-9_-]{20,}`,
 			keywords:      []string{"T3BlbkFJ"},
 			caseSensitive: true,
@@ -621,12 +800,16 @@ func rules() []rule {
 			// `admin01` keys grant org-wide management access (key issuance,
 			// usage limits) so leakage is at least as serious as a regular
 			// `api01` key.
+			id:         "anthropic-api-key",
+			tags:       []string{"anthropic"},
 			expression: `sk-ant-(api|sid|admin)\d{2}-[A-Za-z0-9_-]{93}AA`,
 			keywords:   []string{"sk-ant-"},
 		},
 		{
 			// google-api-key. Used by Maps, Cloud, Firebase, Gemini and
 			// most other Google REST APIs. The `AIza` prefix is fixed.
+			id:            "google-api-key",
+			tags:          []string{"google"},
 			expression:    `AIza[0-9A-Za-z_-]{35}`,
 			keywords:      []string{"AIza"},
 			caseSensitive: true,
@@ -634,6 +817,8 @@ func rules() []rule {
 		{
 			// google-oauth-client-secret. Issued in the Google Cloud
 			// Console for OAuth 2.0 clients; always 35 chars total.
+			id:            "google-oauth-client-secret",
+			tags:          []string{"google"},
 			expression:    `GOCSPX-[A-Za-z0-9_-]{28}`,
 			keywords:      []string{"GOCSPX-"},
 			caseSensitive: true,
@@ -643,12 +828,16 @@ func rules() []rule {
 			// OAuth tokens (`doo_v1_`), and OAuth refresh tokens
 			// (`dor_v1_`) all share the 71-char total shape: 7-char
 			// prefix + 64 lowercase hex.
+			id:         "digitalocean-token",
+			tags:       []string{"digitalocean"},
 			expression: `do[opr]_v1_[a-f0-9]{64}`,
 			keywords:   []string{"dop_v1_", "doo_v1_", "dor_v1_"},
 		},
 		{
 			// stripe-webhook-signing-secret. Used to verify incoming
 			// webhook payloads; leakage lets attackers forge events.
+			id:         "stripe-webhook-signing-secret",
+			tags:       []string{"stripe"},
 			expression: `whsec_[A-Za-z0-9]{32,}`,
 			keywords:   []string{"whsec_"},
 		},
@@ -657,6 +846,8 @@ func rules() []rule {
 			// the `AKCp` prefix is documented and the body is between
 			// 69 and 73 alphanumeric characters depending on when the
 			// key was issued.
+			id:            "jfrog-artifactory-api-key",
+			tags:          []string{"jfrog"},
 			expression:    `AKCp[A-Za-z0-9]{69,73}`,
 			keywords:      []string{"AKCp"},
 			caseSensitive: true,
@@ -665,6 +856,8 @@ func rules() []rule {
 			// sentry-user-auth-token. The `sntrys_` prefix is followed
 			// by a base64url-encoded JWT-style payload that always
 			// starts with `eyJ` (the base64 of `{"`).
+			id:         "sentry-user-auth-token",
+			tags:       []string{"sentry"},
 			expression: `sntrys_eyJ[A-Za-z0-9+/=_-]{40,}`,
 			keywords:   []string{"sntrys_"},
 		},
@@ -675,6 +868,8 @@ func rules() []rule {
 			// a restricted key still grants the scoped Stripe permissions
 			// it was issued with, so it must be redacted. The `prod` env
 			// tag was added in 2024 alongside the `test` / `live` modes.
+			id:         "stripe-restricted-key",
+			tags:       []string{"stripe"},
 			expression: `(?i)rk_(test|live|prod)_[0-9a-z]{10,32}`,
 			keywords:   []string{"rk_test_", "rk_live_", "rk_prod_"},
 		},
@@ -682,12 +877,16 @@ func rules() []rule {
 			// notion-integration-token. The `ntn_` prefix is the modern
 			// (post-2023) format for internal-integration tokens; the
 			// 46-character body is fixed.
+			id:         "notion-integration-token",
+			tags:       []string{"notion"},
 			expression: `ntn_[A-Za-z0-9]{46}`,
 			keywords:   []string{"ntn_"},
 		},
 		{
 			// gitlab-pipeline-trigger-token. `glptt-` is the documented
 			// prefix for trigger tokens; body is 40 lowercase hex.
+			id:         "gitlab-pipeline-trigger-token",
+			tags:       []string{"gitlab"},
 			expression: `glptt-[a-f0-9]{40}`,
 			keywords:   []string{"glptt-"},
 		},
@@ -700,6 +899,8 @@ func rules() []rule {
 			// of 200 covers tokens carrying multiple policies and
 			// namespace metadata (matching the looser bound Trivy uses
 			// for similar Vault formats).
+			id:         "vault-service-token",
+			tags:       []string{"vault", "hashicorp"},
 			expression: `hvs\.[A-Za-z0-9_-]{90,200}`,
 			keywords:   []string{"hvs."},
 		},
@@ -717,12 +918,16 @@ func rules() []rule {
 			// adjacent dotted identifier from being swallowed into the
 			// redaction span when the token isn't separated from it by
 			// whitespace or punctuation.
+			id:         "slack-rotating-token",
+			tags:       []string{"slack"},
 			expression: `xoxe(\.xox[bp])?-[A-Za-z0-9.-]{40,300}`,
 			keywords:   []string{"xoxe-", "xoxe.xox"},
 		},
 		{
 			// replicate-api-token. Replicate keys carry the `r8_`
 			// prefix; the fixed 37-char body keeps the rule specific.
+			id:         "replicate-api-token",
+			tags:       []string{"replicate"},
 			expression: `r8_[A-Za-z0-9]{37}`,
 			keywords:   []string{"r8_"},
 		},
@@ -733,6 +938,8 @@ func rules() []rule {
 			// existing `atlassian-api-token` rule only catches values
 			// preceded by an `atlassian` keyword — this rule fills the
 			// gap for bare leakage in CLI output / logs.
+			id:            "atlassian-cloud-api-token",
+			tags:          []string{"atlassian"},
 			expression:    `ATATT3xFfGF0[A-Za-z0-9_=-]{180,250}`,
 			keywords:      []string{"ATATT3xFfGF0"},
 			caseSensitive: true,
@@ -760,6 +967,8 @@ func rules() []rule {
 			// English bigrams and trip the keyword pre-filter on ~30% of
 			// arbitrary text files. Pinning the case lets the AC pass
 			// drop the regex run on those files.
+			id:            "discord-bot-token",
+			tags:          []string{"discord"},
 			expression:    `[MNO][A-Za-z\d_-]{23,25}\.[\w-]{6,7}\.[\w-]{27,38}`,
 			keywords:      []string{"MT", "Mz", "ND", "NT", "Nz", "OD"},
 			caseSensitive: true,
@@ -772,6 +981,8 @@ func rules() []rule {
 			// release-channel hosts) is the documented shape. The validator
 			// rejects webhook IDs whose Discord snowflake timestamp is
 			// impossible.
+			id:         "discord-webhook-url",
+			tags:       []string{"discord", "webhook"},
 			expression: `https://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w-]+`,
 			keywords:   []string{"discord.com/api/webhooks", "discordapp.com/api/webhooks"},
 			validator:  validDiscordWebhookURL,
@@ -781,6 +992,8 @@ func rules() []rule {
 			// `<8-10 digit bot id>:AA<33 char base64url>`; the literal
 			// `:AA` byte pair starts the second segment for every token
 			// the BotFather has ever issued.
+			id:            "telegram-bot-token",
+			tags:          []string{"telegram"},
 			expression:    `\d{8,10}:AA[A-Za-z0-9_-]{33}`,
 			keywords:      []string{":AA"},
 			caseSensitive: true,
@@ -793,6 +1006,8 @@ func rules() []rule {
 			// verbatim). Capping the body at 400 chars stops the regex
 			// from swallowing arbitrary trailing text when the token is
 			// not separated from following content by whitespace.
+			id:            "flyio-macaroon",
+			tags:          []string{"flyio"},
 			expression:    `FlyV1 fm2_[A-Za-z0-9_=-]{40,400}`,
 			keywords:      []string{"FlyV1 fm2_"},
 			caseSensitive: true,
@@ -800,6 +1015,8 @@ func rules() []rule {
 		{
 			// groq-api-key. Groq Cloud API keys carry the `gsk_` prefix
 			// followed by a fixed 52-character alphanumeric body.
+			id:         "groq-api-key",
+			tags:       []string{"groq"},
 			expression: `gsk_[A-Za-z0-9]{52}`,
 			keywords:   []string{"gsk_"},
 		},
@@ -807,12 +1024,16 @@ func rules() []rule {
 			// perplexity-api-key. Perplexity API keys carry the `pplx-`
 			// prefix followed by a 48-56 char alphanumeric body (length
 			// has shifted slightly between issuance epochs).
+			id:         "perplexity-api-key",
+			tags:       []string{"perplexity"},
 			expression: `pplx-[A-Za-z0-9]{48,56}`,
 			keywords:   []string{"pplx-"},
 		},
 		{
 			// xai-api-key. xAI / Grok API keys carry the `xai-` prefix
 			// followed by an 80-character alphanumeric body.
+			id:         "xai-api-key",
+			tags:       []string{"xai"},
 			expression: `xai-[A-Za-z0-9]{80}`,
 			keywords:   []string{"xai-"},
 		},
@@ -821,6 +1042,8 @@ func rules() []rule {
 			// prefix and a 40-char alphanumeric body. Older trial keys
 			// without the prefix are unfortunately too generic to
 			// match without a `cohere` keyword anchor.
+			id:         "cohere-api-key",
+			tags:       []string{"cohere"},
 			expression: `co_[A-Za-z0-9]{40}`,
 			keywords:   []string{"co_"},
 		},
@@ -828,6 +1051,8 @@ func rules() []rule {
 			// buildkite-agent-token. Agent registration tokens carry the
 			// `bkua_` prefix and a 40-character alphanumeric body. Leakage
 			// lets attackers register fake agents in a Buildkite cluster.
+			id:         "buildkite-agent-token",
+			tags:       []string{"buildkite"},
 			expression: `bkua_[a-zA-Z0-9]{40}`,
 			keywords:   []string{"bkua_"},
 		},
@@ -836,6 +1061,8 @@ func rules() []rule {
 			// carry the `CCIPRJ_` prefix followed by `<vcs-org>_<token>`.
 			// User-scoped personal tokens are 40-char hex without a
 			// prefix and are too generic to match safely on their own.
+			id:            "circleci-project-token",
+			tags:          []string{"circleci"},
 			expression:    `CCIPRJ_[A-Za-z0-9_-]+_[A-Za-z0-9_-]{32,}`,
 			keywords:      []string{"CCIPRJ_"},
 			caseSensitive: true,
@@ -845,6 +1072,8 @@ func rules() []rule {
 			// single URL whose userinfo segment carries the API key and
 			// secret. The `cloudinary://` scheme is unique to this
 			// product so we redact the whole URL.
+			id:         "cloudinary-url",
+			tags:       []string{"cloudinary"},
 			expression: `cloudinary://\d+:[A-Za-z0-9_-]+@[A-Za-z0-9_-]+`,
 			keywords:   []string{"cloudinary://"},
 		},
@@ -861,6 +1090,8 @@ func rules() []rule {
 			// `<…>`, `%…%` and bare `$VAR` template references that
 			// CI / Helm / Kustomize emit verbatim into committed config
 			// files — they aren't real passwords, just placeholders.
+			id:         "mongodb-connection-string",
+			tags:       []string{"mongodb", "connection-string"},
 			expression: `mongodb(?:\+srv)?://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"mongodb://", "mongodb+srv://"},
 		},
@@ -871,6 +1102,8 @@ func rules() []rule {
 			// password's first character must be non-template (see
 			// mongodb-connection-string) so unresolved `${PASSWORD}`
 			// placeholders in templated YAML / Helm values don't fire.
+			id:         "postgres-connection-string",
+			tags:       []string{"postgres", "connection-string"},
 			expression: `postgres(?:ql)?://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"postgres://", "postgresql://"},
 		},
@@ -879,6 +1112,8 @@ func rules() []rule {
 			// the actual secret; the surrounding `DefaultEndpointsProtocol`
 			// / `AccountName` framing is only metadata. Azure account keys
 			// are 512-bit symmetric keys, base64-encoded to 88 chars.
+			id:            "azure-storage-connection-string",
+			tags:          []string{"azure", "connection-string"},
 			expression:    `DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=(?P<secret>[A-Za-z0-9+/=]{88})`,
 			keywords:      []string{"DefaultEndpointsProtocol="},
 			caseSensitive: true,
@@ -889,6 +1124,8 @@ func rules() []rule {
 			// are already covered; secret keys share the same shape with
 			// the `sk.` prefix and grant write access to the Mapbox
 			// account.
+			id:         "mapbox-secret-key",
+			tags:       []string{"mapbox"},
 			expression: `(?i)sk\.[a-z0-9]{60}\.[a-z0-9]{22}`,
 			keywords:   []string{"sk."},
 		},
@@ -896,6 +1133,8 @@ func rules() []rule {
 			// vault-batch-token. HashiCorp Vault batch tokens follow the
 			// same `<prefix>.<base64url body>` shape as service tokens
 			// but use the `hvb.` prefix.
+			id:         "vault-batch-token",
+			tags:       []string{"vault", "hashicorp"},
 			expression: `hvb\.[A-Za-z0-9_-]{90,200}`,
 			keywords:   []string{"hvb."},
 		},
@@ -903,12 +1142,16 @@ func rules() []rule {
 			// vault-recovery-token. Recovery tokens are issued during
 			// initialisation of an auto-unsealed Vault and carry the
 			// `hvr.` prefix; full root-equivalent if leaked.
+			id:         "vault-recovery-token",
+			tags:       []string{"vault", "hashicorp"},
 			expression: `hvr\.[A-Za-z0-9_-]{90,200}`,
 			keywords:   []string{"hvr."},
 		},
 		{
 			// netlify-pat. Netlify personal access tokens carry the
 			// `nfp_` prefix and a 40-character alphanumeric body.
+			id:         "netlify-pat",
+			tags:       []string{"netlify"},
 			expression: `nfp_[A-Za-z0-9]{40}`,
 			keywords:   []string{"nfp_"},
 		},
@@ -920,6 +1163,8 @@ func rules() []rule {
 			// numbers, fractions, paths). The existing `asana-*` rules
 			// only fire when the literal word `asana` appears nearby; this
 			// rule fills the gap for bare leakage in CLI output / logs.
+			id:         "asana-pat",
+			tags:       []string{"asana"},
 			expression: `1/\d{14,}:[a-f0-9]{32}`,
 			keywords:   []string{"1/"},
 		},
@@ -927,6 +1172,8 @@ func rules() []rule {
 			// cloudflare-origin-ca-key. Cloudflare's Origin CA keys are
 			// printed as `v1.0-<32 hex>-<146 base64>` and grant the
 			// ability to issue certificates for any zone in the account.
+			id:         "cloudflare-origin-ca-key",
+			tags:       []string{"cloudflare"},
 			expression: `v1\.0-[a-f0-9]{32}-[A-Za-z0-9+/=]{146}`,
 			keywords:   []string{"v1.0-"},
 		},
@@ -948,6 +1195,8 @@ func rules() []rule {
 			// while preventing the regex from absorbing arbitrary
 			// trailing alphanumeric content if a token is not
 			// whitespace-terminated.
+			id:            "1password-service-account-token",
+			tags:          []string{"1password"},
 			expression:    `ops_eyJ[A-Za-z0-9+/=_-]{250,1000}`,
 			keywords:      []string{"ops_eyJ"},
 			caseSensitive: true,
@@ -956,6 +1205,8 @@ func rules() []rule {
 			// openrouter-api-key. OpenRouter (LLM router) keys carry
 			// the documented `sk-or-v1-` prefix followed by a 64-char
 			// lowercase-hex body.
+			id:         "openrouter-api-key",
+			tags:       []string{"openrouter"},
 			expression: `sk-or-v1-[a-f0-9]{64}`,
 			keywords:   []string{"sk-or-v1-"},
 		},
@@ -966,6 +1217,8 @@ func rules() []rule {
 			// gitleaks' upstream rule treats it as optional, but doing
 			// so flags any 40-char hex blob and is too noisy for our
 			// agent-output use case.
+			id:         "sonar-token",
+			tags:       []string{"sonar"},
 			expression: `(squ|sqp|sqa)_[a-f0-9]{40}`,
 			keywords:   []string{"squ_", "sqp_", "sqa_"},
 		},
@@ -975,6 +1228,8 @@ func rules() []rule {
 			// base64url-ish segments. Both segments are bounded so the
 			// regex can't swallow neighbouring identifiers when a key
 			// abuts other text without a separator.
+			id:         "pinecone-legacy-api-key",
+			tags:       []string{"pinecone"},
 			expression: `pckey_[A-Za-z0-9]{1,40}_[A-Za-z0-9_-]{24,80}`,
 			keywords:   []string{"pckey_"},
 		},
@@ -985,6 +1240,8 @@ func rules() []rule {
 			// redacting. Body is base64url-ish, observed at ~56 chars;
 			// the 80-char ceiling keeps the regex from absorbing trailing
 			// text when the key isn't whitespace-terminated.
+			id:         "supabase-secret-key",
+			tags:       []string{"supabase"},
 			expression: `sb_secret_[A-Za-z0-9_-]{40,80}`,
 			keywords:   []string{"sb_secret_"},
 		},
@@ -994,6 +1251,8 @@ func rules() []rule {
 			// prefix is documented; the body is a `<id>-<secret>` pair
 			// of alphanumeric segments. Both segments are bounded so
 			// the regex can't swallow adjacent text.
+			id:         "tailscale-auth-key",
+			tags:       []string{"tailscale"},
 			expression: `tskey-auth-[A-Za-z0-9]{10,30}-[A-Za-z0-9]{20,80}`,
 			keywords:   []string{"tskey-auth-"},
 		},
@@ -1002,6 +1261,8 @@ func rules() []rule {
 			// to the Tailscale control plane (devices, ACLs, keys).
 			// Same `<id>-<secret>` body shape as the auth-key form
 			// with the same upper bounds.
+			id:         "tailscale-api-access-token",
+			tags:       []string{"tailscale"},
 			expression: `tskey-api-[A-Za-z0-9]{10,30}-[A-Za-z0-9]{20,80}`,
 			keywords:   []string{"tskey-api-"},
 		},
@@ -1013,6 +1274,8 @@ func rules() []rule {
 			// tokens are 24 chars; the 80-char ceiling stops the regex
 			// from absorbing trailing text when the token isn't
 			// whitespace-terminated.
+			id:         "vercel-token",
+			tags:       []string{"vercel"},
 			expression: `vc[kpi]_[A-Za-z0-9]{20,80}`,
 			keywords:   []string{"vcp_", "vck_", "vci_"},
 		},
@@ -1032,6 +1295,8 @@ func rules() []rule {
 			// key-id span, but leakage of the pair lets an attacker
 			// authenticate against the Razorpay API — still worth
 			// scrubbing the half we can identify.
+			id:         "razorpay-key-id",
+			tags:       []string{"razorpay"},
 			expression: `rzp_(test|live)_[A-Za-z0-9]{14}`,
 			keywords:   []string{"rzp_test_", "rzp_live_"},
 		},
@@ -1040,6 +1305,8 @@ func rules() []rule {
 			// shape `access-(sandbox|development|production)-<UUID>`.
 			// The environment segment plus the strict UUID body keeps
 			// the rule extremely specific.
+			id:         "plaid-access-token",
+			tags:       []string{"plaid"},
 			expression: `access-(sandbox|development|production)-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`,
 			keywords:   []string{"access-sandbox-", "access-development-", "access-production-"},
 		},
@@ -1047,6 +1314,8 @@ func rules() []rule {
 			// posthog-personal-api-token. PostHog issues personal API
 			// tokens shaped `phx_<43 alnum>`. The body length is fixed
 			// per their issuance, so the regex stays tight.
+			id:         "posthog-personal-api-token",
+			tags:       []string{"posthog"},
 			expression: `phx_[A-Za-z0-9]{43}`,
 			keywords:   []string{"phx_"},
 		},
@@ -1056,6 +1325,8 @@ func rules() []rule {
 			// full account access (deployments, env vars, services).
 			// The 80-char ceiling stops the regex from absorbing trailing
 			// text when the token isn't whitespace-terminated.
+			id:         "render-api-key",
+			tags:       []string{"render"},
 			expression: `rnd_[A-Za-z0-9_-]{30,80}`,
 			keywords:   []string{"rnd_"},
 		},
@@ -1065,6 +1336,8 @@ func rules() []rule {
 			// telemetry) and `hcaic_` for configuration keys (read /
 			// modify dataset settings). Both share a 58-char
 			// alphanumeric body.
+			id:         "honeycomb-api-key",
+			tags:       []string{"honeycomb"},
 			expression: `hca(ik|ic)_[A-Za-z0-9]{58}`,
 			keywords:   []string{"hcaik_", "hcaic_"},
 		},
@@ -1072,6 +1345,8 @@ func rules() []rule {
 			// akamai-edgegrid-client-token. Akamai EdgeGrid API client
 			// tokens follow the `akab-<16 alnum>-<16 alnum>` shape
 			// documented for `.edgerc` config files.
+			id:         "akamai-edgegrid-client-token",
+			tags:       []string{"akamai"},
 			expression: `akab-[a-z0-9]{16}-[a-z0-9]{16}`,
 			keywords:   []string{"akab-"},
 		},
@@ -1079,6 +1354,8 @@ func rules() []rule {
 			// adafruit-io-key. Adafruit IO keys carry the `aio_` prefix
 			// and a 28-character alphanumeric body — leakage allows
 			// reading / writing IoT feeds attached to the account.
+			id:         "adafruit-io-key",
+			tags:       []string{"adafruit"},
 			expression: `aio_[A-Za-z0-9]{28}`,
 			keywords:   []string{"aio_"},
 		},
@@ -1093,6 +1370,8 @@ func rules() []rule {
 			// still required), but it's part of a recovery pair that
 			// must remain confidential and is treated as a secret in
 			// every 1Password compliance regime.
+			id:            "1password-secret-key",
+			tags:          []string{"1password"},
 			expression:    `A3-[A-Z0-9]{6}-(?:[A-Z0-9]{11}|[A-Z0-9]{6}-[A-Z0-9]{5})-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}`,
 			keywords:      []string{"A3-"},
 			caseSensitive: true,
@@ -1116,22 +1395,30 @@ func rules() []rule {
 		{
 			// gitlab-cicd-job-token. `glcbt-` prefix; body is a short
 			// project identifier, an underscore, then a 20-char body.
+			id:         "gitlab-cicd-job-token",
+			tags:       []string{"gitlab"},
 			expression: `glcbt-[0-9a-zA-Z]{1,5}_[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"glcbt-"},
 		},
 		{
 			// gitlab-deploy-token. `gldt-` prefix + 20-char body.
+			id:         "gitlab-deploy-token",
+			tags:       []string{"gitlab"},
 			expression: `gldt-[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"gldt-"},
 		},
 		{
 			// gitlab-feature-flag-client-token. `glffct-` prefix.
+			id:         "gitlab-feature-flag-client-token",
+			tags:       []string{"gitlab"},
 			expression: `glffct-[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"glffct-"},
 		},
 		{
 			// gitlab-feed-token. `glft-` prefix; user-scoped read access
 			// to the user's GitLab activity feeds.
+			id:         "gitlab-feed-token",
+			tags:       []string{"gitlab"},
 			expression: `glft-[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"glft-"},
 		},
@@ -1139,6 +1426,8 @@ func rules() []rule {
 			// gitlab-kubernetes-agent-token. `glagent-` prefix and a
 			// 50-char body — used by the `kas` agent to authenticate
 			// against a GitLab control plane.
+			id:         "gitlab-kubernetes-agent-token",
+			tags:       []string{"gitlab"},
 			expression: `glagent-[0-9a-zA-Z_-]{50}`,
 			keywords:   []string{"glagent-"},
 		},
@@ -1146,6 +1435,8 @@ func rules() []rule {
 			// gitlab-oauth-app-secret. `gloas-` prefix and a 64-char
 			// body — leakage of an OAuth app secret lets attackers
 			// impersonate the application during the OAuth dance.
+			id:         "gitlab-oauth-app-secret",
+			tags:       []string{"gitlab"},
 			expression: `gloas-[0-9a-zA-Z_-]{64}`,
 			keywords:   []string{"gloas-"},
 		},
@@ -1154,6 +1445,8 @@ func rules() []rule {
 			// (uppercase, fixed) is documented for runner registration
 			// tokens; the trailing 20-char body uses the same charset
 			// as the rest of the GitLab tokens.
+			id:            "gitlab-runner-registration-token",
+			tags:          []string{"gitlab"},
 			expression:    `GR1348941[0-9a-zA-Z_-]{20}`,
 			keywords:      []string{"GR1348941"},
 			caseSensitive: true,
@@ -1161,12 +1454,16 @@ func rules() []rule {
 		{
 			// gitlab-runner-authentication-token. `glrt-` prefix; same
 			// 20-char body charset as the deploy / feed token shapes.
+			id:         "gitlab-runner-authentication-token",
+			tags:       []string{"gitlab"},
 			expression: `glrt-[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"glrt-"},
 		},
 		{
 			// gitlab-scim-token. `glsoat-` prefix; grants SCIM
 			// (user-provisioning) access at the group / instance level.
+			id:         "gitlab-scim-token",
+			tags:       []string{"gitlab"},
 			expression: `glsoat-[0-9a-zA-Z_-]{20}`,
 			keywords:   []string{"glsoat-"},
 		},
@@ -1174,6 +1471,8 @@ func rules() []rule {
 			// gitlab-incoming-mail-token. `glimt-` prefix and a
 			// 25-char body; lets attackers impersonate the GitLab
 			// mail-receive endpoint (create issues / notes by email).
+			id:         "gitlab-incoming-mail-token",
+			tags:       []string{"gitlab"},
 			expression: `glimt-[0-9a-zA-Z_-]{25}`,
 			keywords:   []string{"glimt-"},
 		},
@@ -1185,6 +1484,8 @@ func rules() []rule {
 			// only matches the first 20 chars of the body, leaving the
 			// rest visible — this rule covers the full routable token in
 			// one redaction.
+			id:         "gitlab-pat-routable",
+			tags:       []string{"gitlab"},
 			expression: `glpat-[0-9a-zA-Z_-]{27,300}\.[0-9a-z]{9}`,
 			keywords:   []string{"glpat-"},
 		},
@@ -1197,6 +1498,8 @@ func rules() []rule {
 			// decoded payload starts with `BedrockAPIKey-`. This final
 			// check rejects arbitrary base64 blobs that happen to start
 			// with `ABSK`.
+			id:            "aws-bedrock-long-lived-api-key",
+			tags:          []string{"aws"},
 			expression:    `ABSK[A-Za-z0-9+/]{128}`,
 			keywords:      []string{"ABSK"},
 			caseSensitive: true,
@@ -1209,6 +1512,8 @@ func rules() []rule {
 			// `bedrock.amazonaws.com`) and then the actual body. The
 			// distinctive base64 marker keeps the keyword filter
 			// extremely selective.
+			id:         "aws-bedrock-short-lived-api-key",
+			tags:       []string{"aws"},
 			expression: `bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t[A-Za-z0-9+/=_-]{20,400}`,
 			keywords:   []string{"bedrock-api-key-"},
 		},
@@ -1222,6 +1527,8 @@ func rules() []rule {
 			// the `heroku` keyword). The new tokens carry an `HRKU-AA`
 			// prefix + 58-char base64url body and are emitted bare by
 			// the Heroku CLI / API responses.
+			id:            "heroku-api-key-v2",
+			tags:          []string{"heroku"},
 			expression:    `HRKU-AA[0-9a-zA-Z_-]{58}`,
 			keywords:      []string{"HRKU-AA"},
 			caseSensitive: true,
@@ -1233,6 +1540,8 @@ func rules() []rule {
 			// stays selective enough on real-world text (the digit-Q-
 			// tilde sequence is rare outside this format) for the AC
 			// pre-filter to remain useful.
+			id:            "azure-ad-client-secret",
+			tags:          []string{"azure"},
 			expression:    `[A-Za-z0-9_~.]{3}\dQ~[A-Za-z0-9_~.-]{31,34}`,
 			keywords:      []string{"Q~"},
 			caseSensitive: true,
@@ -1242,6 +1551,8 @@ func rules() []rule {
 			// carry the literal `sha256~` prefix and a 43-char
 			// base64url body. Leakage grants full kubeconfig-equivalent
 			// access until the token expires.
+			id:         "openshift-user-token",
+			tags:       []string{"openshift"},
 			expression: `sha256~[A-Za-z0-9_-]{43}`,
 			keywords:   []string{"sha256~"},
 		},
@@ -1250,6 +1561,8 @@ func rules() []rule {
 			// (alongside `pscale_pw_` / `pscale_tkn_`) covers OAuth
 			// flow-issued tokens and includes dots / equals signs from
 			// base64url padding.
+			id:         "planetscale-oauth-token",
+			tags:       []string{"planetscale"},
 			expression: `pscale_oauth_[A-Za-z0-9_=.-]{32,80}`,
 			keywords:   []string{"pscale_oauth_"},
 		},
@@ -1261,6 +1574,8 @@ func rules() []rule {
 			// (distinct from the legacy `eyJrIjoi…` HTTP-API tokens)
 			// carry the `glc_` prefix and a 32-400 char base64 body
 			// with optional `=` padding.
+			id:         "grafana-cloud-api-token",
+			tags:       []string{"grafana"},
 			expression: `glc_[A-Za-z0-9+/]{32,400}={0,3}`,
 			keywords:   []string{"glc_"},
 		},
@@ -1269,6 +1584,8 @@ func rules() []rule {
 			// the `glsa_<32 alnum>_<8 hex CRC>` shape — the trailing
 			// 8-char hex CRC keeps the regex tight even though the body
 			// itself is purely alphanumeric.
+			id:         "grafana-service-account-token",
+			tags:       []string{"grafana"},
 			expression: `glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}`,
 			keywords:   []string{"glsa_"},
 		},
@@ -1277,6 +1594,8 @@ func rules() []rule {
 			// Metric / Log APIs); distinct from the user-API (`NRAK-`)
 			// and browser (`NRJS-`) keys already covered. Body is 32
 			// hex characters with optional dashes (no fixed positions).
+			id:            "new-relic-insert-key",
+			tags:          []string{"new-relic"},
 			expression:    `NRII-[a-zA-Z0-9-]{32}`,
 			keywords:      []string{"NRII-"},
 			caseSensitive: true,
@@ -1286,6 +1605,8 @@ func rules() []rule {
 			// the `sntryu_` prefix + 64-char lowercase hex body —
 			// distinct from the org-scoped `sntrys_eyJ…` tokens already
 			// covered.
+			id:         "sentry-user-token",
+			tags:       []string{"sentry"},
 			expression: `sntryu_[a-f0-9]{64}`,
 			keywords:   []string{"sntryu_"},
 		},
@@ -1298,6 +1619,8 @@ func rules() []rule {
 			// The four-segment shape is distinct from the bot / user /
 			// rotating tokens already covered by the slack-access /
 			// slack-rotating rules.
+			id:         "slack-app-token",
+			tags:       []string{"slack"},
 			expression: `xapp-\d-[A-Z0-9]{8,16}-\d{8,16}-[a-fA-F0-9]{32,128}`,
 			keywords:   []string{"xapp-"},
 		},
@@ -1307,6 +1630,8 @@ func rules() []rule {
 			// content to the channel. The fixed `webhook.office.com`
 			// host plus the strictly UUID-shaped path segments keep the
 			// regex specific.
+			id:         "microsoft-teams-incoming-webhook",
+			tags:       []string{"microsoft", "webhook"},
 			expression: `https://[a-z0-9]+\.webhook\.office\.com/webhookb2/[a-z0-9]{8}-(?:[a-z0-9]{4}-){3}[a-z0-9]{12}@[a-z0-9]{8}-(?:[a-z0-9]{4}-){3}[a-z0-9]{12}/IncomingWebhook/[a-zA-Z0-9]{32}/[a-z0-9]{8}-(?:[a-z0-9]{4}-){3}[a-z0-9]{12}`,
 			keywords:   []string{"webhook.office.com"},
 		},
@@ -1319,6 +1644,8 @@ func rules() []rule {
 			// (decoding to `refd`) followed by a 59-char alphanumeric
 			// body. Leakage grants the same scope as a referenced
 			// access token until the latter is revoked.
+			id:            "jfrog-reference-token",
+			tags:          []string{"jfrog"},
 			expression:    `cmVmd[A-Za-z0-9]{59}`,
 			keywords:      []string{"cmVmd"},
 			caseSensitive: true,
@@ -1326,12 +1653,16 @@ func rules() []rule {
 		{
 			// infracost-api-token. Cost-estimation API tokens carry the
 			// `ico-` prefix and a 32-char alphanumeric body.
+			id:         "infracost-api-token",
+			tags:       []string{"infracost"},
 			expression: `ico-[A-Za-z0-9]{32}`,
 			keywords:   []string{"ico-"},
 		},
 		{
 			// prefect-api-token. Prefect Cloud user tokens carry the
 			// `pnu_` prefix and a 36-char alphanumeric body.
+			id:         "prefect-api-token",
+			tags:       []string{"prefect"},
 			expression: `pnu_[A-Za-z0-9]{36}`,
 			keywords:   []string{"pnu_"},
 		},
@@ -1339,6 +1670,8 @@ func rules() []rule {
 			// readme-api-token. Readme.com (docs hosting) tokens carry
 			// the `rdme_` prefix and a 70-char lowercase-alphanumeric
 			// body.
+			id:         "readme-api-token",
+			tags:       []string{"readme"},
 			expression: `rdme_[a-z0-9]{70}`,
 			keywords:   []string{"rdme_"},
 		},
@@ -1347,6 +1680,8 @@ func rules() []rule {
 			// download feeds always end with the literal `_mmk` suffix
 			// after a `<6 alnum>_<29 alnum>` body, which keeps the
 			// keyword anchor cheap.
+			id:         "maxmind-license-key",
+			tags:       []string{"maxmind"},
 			expression: `[A-Za-z0-9]{6}_[A-Za-z0-9]{29}_mmk`,
 			keywords:   []string{"_mmk"},
 		},
@@ -1356,6 +1691,8 @@ func rules() []rule {
 		{
 			// yandex-cloud-api-key. Service-account API keys carry the
 			// uppercase `AQVN` prefix + 35-38 char base64url body.
+			id:            "yandex-cloud-api-key",
+			tags:          []string{"yandex"},
 			expression:    `AQVN[A-Za-z0-9_-]{35,38}`,
 			keywords:      []string{"AQVN"},
 			caseSensitive: true,
@@ -1365,6 +1702,8 @@ func rules() []rule {
 			// tokens carry the `sgp_` prefix and either a 40-char hex
 			// body (legacy) or `<16-hex-or-`local`>_<40-hex>` (current).
 			// We match both shapes in a single rule.
+			id:         "sourcegraph-access-token",
+			tags:       []string{"sourcegraph"},
 			expression: `sgp_(?:(?:[a-fA-F0-9]{16}|local)_)?[a-fA-F0-9]{40}`,
 			keywords:   []string{"sgp_"},
 		},
@@ -1372,6 +1711,8 @@ func rules() []rule {
 			// defined-networking-api-token. The Defined Networking
 			// (Nebula control plane) tokens carry the `dnkey-` prefix
 			// followed by a `<26 alnum>-<52 alnum>` body.
+			id:         "defined-networking-api-token",
+			tags:       []string{"defined-networking"},
 			expression: `dnkey-[A-Za-z0-9_=-]{26}-[A-Za-z0-9_=-]{52}`,
 			keywords:   []string{"dnkey-"},
 		},
@@ -1380,6 +1721,8 @@ func rules() []rule {
 			// region-anchored `tk-us-` prefix and a 48-char body. Other
 			// regions (`tk-eu-`, `tk-osc-…`) follow the same shape; we
 			// list every region prefix gitleaks documents.
+			id:         "scalingo-api-token",
+			tags:       []string{"scalingo"},
 			expression: `tk-(?:us|eu|osc-fr1|osc-secnum-fr1)-[A-Za-z0-9_-]{48}`,
 			keywords:   []string{"tk-us-", "tk-eu-", "tk-osc-"},
 		},
@@ -1398,6 +1741,8 @@ func rules() []rule {
 			// datadog-access-token. 40-char hex API key for the Datadog
 			// observability platform; high blast radius (account-wide
 			// telemetry ingest + dashboard / monitor management).
+			id:         "datadog-access-token",
+			tags:       []string{"datadog"},
 			expression: contextual(`datadog`, `[a-z0-9]{40}`),
 			keywords:   []string{"datadog"},
 		},
@@ -1405,12 +1750,16 @@ func rules() []rule {
 			// snyk-api-token. UUID-shaped API token for Snyk security
 			// scanning; leakage exposes vulnerability findings and the
 			// ability to disable scans.
+			id:         "snyk-api-token",
+			tags:       []string{"snyk"},
 			expression: contextual(`snyk`, `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
 			keywords:   []string{"snyk"},
 		},
 		{
 			// launchdarkly-access-token. Feature-flag platform; leakage
 			// lets attackers toggle production flags.
+			id:         "launchdarkly-access-token",
+			tags:       []string{"launchdarkly"},
 			expression: contextual(`launchdarkly`, `[a-z0-9=_\-]{40}`),
 			keywords:   []string{"launchdarkly"},
 		},
@@ -1418,6 +1767,8 @@ func rules() []rule {
 			// cloudflare-api-key. Legacy 40-char API tokens are
 			// alphanumeric; allowing hyphen / underscore here turns
 			// ordinary Cloudflare product slugs into false positives.
+			id:         "cloudflare-api-key",
+			tags:       []string{"cloudflare"},
 			expression: contextual(`cloudflare`, `[A-Za-z0-9_-]{40}`),
 			keywords:   []string{"cloudflare"},
 			validator:  validCloudflareAPIKey,
@@ -1426,6 +1777,8 @@ func rules() []rule {
 			// cloudflare-global-api-key. Legacy 37-hex global API key —
 			// full account access; deprecated in favour of scoped keys
 			// but still widely deployed in older configurations.
+			id:         "cloudflare-global-api-key",
+			tags:       []string{"cloudflare"},
 			expression: contextual(`cloudflare`, `[a-f0-9]{37}`),
 			keywords:   []string{"cloudflare"},
 		},
@@ -1433,30 +1786,40 @@ func rules() []rule {
 			// confluent-access-token. Short 16-char access token issued
 			// by Confluent Cloud (managed Kafka). Pair with the secret
 			// rule below for full credential coverage.
+			id:         "confluent-access-token",
+			tags:       []string{"confluent"},
 			expression: contextual(`confluent`, `[a-z0-9]{16}`),
 			keywords:   []string{"confluent"},
 		},
 		{
 			// confluent-secret-key. 64-char secret half of a Confluent
 			// Cloud API credential pair.
+			id:         "confluent-secret-key",
+			tags:       []string{"confluent"},
 			expression: contextual(`confluent`, `[a-z0-9]{64}`),
 			keywords:   []string{"confluent"},
 		},
 		{
 			// looker-client-id. 20-char alphanumeric client ID for the
 			// Looker (Google Cloud) BI platform API.
+			id:         "looker-client-id",
+			tags:       []string{"looker"},
 			expression: contextual(`looker`, `[a-z0-9]{20}`),
 			keywords:   []string{"looker"},
 		},
 		{
 			// looker-client-secret. 24-char alphanumeric client secret;
 			// pairs with the client-id above.
+			id:         "looker-client-secret",
+			tags:       []string{"looker"},
 			expression: contextual(`looker`, `[a-z0-9]{24}`),
 			keywords:   []string{"looker"},
 		},
 		{
 			// mattermost-access-token. 26-char alphanumeric personal
 			// access token for the Mattermost chat platform.
+			id:         "mattermost-access-token",
+			tags:       []string{"mattermost"},
 			expression: contextual(`mattermost`, `[a-z0-9]{26}`),
 			keywords:   []string{"mattermost"},
 		},
@@ -1465,30 +1828,40 @@ func rules() []rule {
 			// for the Sumo Logic log-management platform. The vendor
 			// keyword `sumo` covers `sumo`, `Sumo`, and `SUMO` because
 			// the AC pre-filter is case-folded.
+			id:         "sumologic-access-token",
+			tags:       []string{"sumologic"},
 			expression: contextual(`sumo`, `[a-z0-9]{64}`),
 			keywords:   []string{"sumo"},
 		},
 		{
 			// travisci-access-token. 22-char alphanumeric Travis CI
 			// API token; matched on the shorter `travis` keyword.
+			id:         "travisci-access-token",
+			tags:       []string{"travisci"},
 			expression: contextual(`travis`, `[a-z0-9]{22}`),
 			keywords:   []string{"travis"},
 		},
 		{
 			// zendesk-secret-key. 40-char alphanumeric secret key for
 			// the Zendesk customer-support platform.
+			id:         "zendesk-secret-key",
+			tags:       []string{"zendesk"},
 			expression: contextual(`zendesk`, `[a-z0-9]{40}`),
 			keywords:   []string{"zendesk"},
 		},
 		{
 			// codecov-access-token. 32-char alphanumeric access token
 			// for the Codecov coverage-report service.
+			id:         "codecov-access-token",
+			tags:       []string{"codecov"},
 			expression: contextual(`codecov`, `[a-z0-9]{32}`),
 			keywords:   []string{"codecov"},
 		},
 		{
 			// algolia-api-key. 32-char alphanumeric API key for the
 			// Algolia search platform; admin keys allow index changes.
+			id:         "algolia-api-key",
+			tags:       []string{"algolia"},
 			expression: contextual(`algolia`, `[a-z0-9]{32}`),
 			keywords:   []string{"algolia"},
 		},
@@ -1496,12 +1869,16 @@ func rules() []rule {
 			// airtable-api-key. Legacy 17-char alphanumeric Airtable
 			// API key (the modern PAT format `pat<14>.<64hex>` is
 			// covered separately when its prefix becomes detectable).
+			id:         "airtable-api-key",
+			tags:       []string{"airtable"},
 			expression: contextual(`airtable`, `[a-z0-9]{17}`),
 			keywords:   []string{"airtable"},
 		},
 		{
 			// sendbird-access-token. 40-char hex access token for the
 			// SendBird in-app messaging platform.
+			id:         "sendbird-access-token",
+			tags:       []string{"sendbird"},
 			expression: contextual(`sendbird`, `[a-f0-9]{40}`),
 			keywords:   []string{"sendbird"},
 		},
@@ -1512,6 +1889,8 @@ func rules() []rule {
 			// vendor prefix, so the rule is anchored on the
 			// `okta` vendor word. High blast radius: SSO directory
 			// access if leaked. Source: gitleaks `okta-access-token`.
+			id:         "okta-access-token",
+			tags:       []string{"okta"},
 			expression: contextual(`okta`, `00[\w=-]{40}`),
 			keywords:   []string{"okta"},
 		},
@@ -1519,6 +1898,8 @@ func rules() []rule {
 			// trello-access-token. 32-char alphanumeric token for
 			// the Trello REST API. Anchored on the `trello`
 			// keyword because the body has no unique prefix.
+			id:         "trello-access-token",
+			tags:       []string{"trello"},
 			expression: contextual(`trello`, `[a-z0-9]{32}`),
 			keywords:   []string{"trello"},
 		},
@@ -1527,6 +1908,8 @@ func rules() []rule {
 			// Cisco Meraki cloud-network controller; admin keys
 			// allow firmware / firewall reconfiguration. Source:
 			// gitleaks `cisco-meraki-api-key`.
+			id:         "cisco-meraki-api-key",
+			tags:       []string{"cisco"},
 			expression: contextual(`meraki`, `[a-f0-9]{40}`),
 			keywords:   []string{"meraki"},
 		},
@@ -1537,6 +1920,8 @@ func rules() []rule {
 			// distinctive enough to anchor without a vendor
 			// keyword. Source: trufflehog `clickuppersonaltoken`
 			// detector.
+			id:         "clickup-personal-token",
+			tags:       []string{"clickup"},
 			expression: `\bpk_[0-9]{7,9}_[0-9A-Z]{32}\b`,
 			keywords:   []string{"pk_"},
 		},
@@ -1546,6 +1931,8 @@ func rules() []rule {
 			// body. Leakage exposes paid-tier RPC quota and
 			// historical-data endpoints. Source: trufflehog
 			// `alchemy` detector.
+			id:         "alchemy-api-key",
+			tags:       []string{"alchemy"},
 			expression: `alcht_[0-9a-zA-Z]{30}`,
 			keywords:   []string{"alcht_"},
 		},
@@ -1556,6 +1943,8 @@ func rules() []rule {
 			// but not unique on its own, so the rule is anchored on
 			// the `ngrok` vendor keyword. Source: trufflehog
 			// `ngrok` detector.
+			id:         "ngrok-auth-token",
+			tags:       []string{"ngrok"},
 			expression: contextual(`ngrok`, `2[A-Za-z0-9]{26}_[0-9][A-Za-z0-9]{20}`),
 			keywords:   []string{"ngrok"},
 		},
@@ -1565,6 +1954,8 @@ func rules() []rule {
 			// many vendors (OpenAI, OpenRouter, etc.) so the rule
 			// is anchored on the `deepseek` vendor keyword. Source:
 			// trufflehog `deepseek` detector.
+			id:         "deepseek-api-key",
+			tags:       []string{"deepseek"},
 			expression: contextual(`deepseek`, `sk-[a-z0-9]{32}`),
 			keywords:   []string{"deepseek"},
 		},
@@ -1573,6 +1964,8 @@ func rules() []rule {
 			// AssemblyAI speech-to-text platform; anchored on the
 			// `assemblyai` vendor keyword because the body shape is
 			// generic. Source: trufflehog `assemblyai` detector.
+			id:         "assemblyai-api-key",
+			tags:       []string{"assemblyai"},
 			expression: contextual(`assemblyai`, `[a-f0-9]{32}`),
 			keywords:   []string{"assemblyai"},
 		},
@@ -1580,6 +1973,8 @@ func rules() []rule {
 			// deepgram-api-key. 40-char hex API key for the
 			// Deepgram speech-to-text platform. Source: trufflehog
 			// `deepgram` detector.
+			id:         "deepgram-api-key",
+			tags:       []string{"deepgram"},
 			expression: contextual(`deepgram`, `[a-f0-9]{40}`),
 			keywords:   []string{"deepgram"},
 		},
@@ -1588,6 +1983,8 @@ func rules() []rule {
 			// the Logz.io log-management platform; leakage allows
 			// arbitrary log injection into the customer's account.
 			// Source: trufflehog `logzio` detector.
+			id:         "logzio-shipping-token",
+			tags:       []string{"logzio"},
 			expression: contextual(`logz`, `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`),
 			keywords:   []string{"logz"},
 		},
@@ -1597,6 +1994,8 @@ func rules() []rule {
 			// generic so the rule is anchored on the `etherscan`
 			// vendor keyword. Source: trufflehog `etherscan`
 			// detector.
+			id:         "etherscan-api-key",
+			tags:       []string{"etherscan"},
 			expression: contextual(`etherscan`, `[0-9A-Z]{34}`),
 			keywords:   []string{"etherscan"},
 		},
@@ -1605,6 +2004,8 @@ func rules() []rule {
 			// Moralis web3 backend; leakage exposes paid RPC quota
 			// and indexed-data endpoints. Source: trufflehog
 			// `moralis` detector.
+			id:         "moralis-api-key",
+			tags:       []string{"moralis"},
 			expression: contextual(`moralis`, `[0-9a-zA-Z]{64}`),
 			keywords:   []string{"moralis"},
 		},
@@ -1624,6 +2025,8 @@ func rules() []rule {
 			// access tokens carry the `figd_` prefix and a 22-100
 			// char alphanumeric body. Leakage grants full API access
 			// to files, projects, and team resources.
+			id:         "figma-personal-access-token",
+			tags:       []string{"figma"},
 			expression: `figd_[A-Za-z0-9_-]{22,100}`,
 			keywords:   []string{"figd_"},
 		},
@@ -1631,6 +2034,8 @@ func rules() []rule {
 			// contentful-personal-access-token. The `CFPAT-` prefix
 			// is documented for Contentful personal access tokens;
 			// the body is 43 chars of base64url-ish content.
+			id:            "contentful-personal-access-token",
+			tags:          []string{"contentful"},
 			expression:    `CFPAT-[A-Za-z0-9_-]{43}`,
 			keywords:      []string{"CFPAT-"},
 			caseSensitive: true,
@@ -1642,6 +2047,8 @@ func rules() []rule {
 			// SCIM (`dp.scim.`), audit (`dp.audit.`), and service-
 			// account (`dp.sa.`) tokens. All share the same 43-char
 			// alphanumeric body.
+			id:         "doppler-extra-tokens",
+			tags:       []string{"doppler"},
 			expression: `dp\.(st|ct|scim|audit|sa)\.(?i)[a-z0-9]{43}`,
 			keywords:   []string{"dp.st.", "dp.ct.", "dp.scim.", "dp.audit.", "dp.sa."},
 		},
@@ -1652,6 +2059,8 @@ func rules() []rule {
 			// body. The existing `hubspot-api-token` rule only fires
 			// with the `hubspot` keyword nearby; this rule catches
 			// bare tokens in CLI output / logs.
+			id:         "hubspot-private-app-token",
+			tags:       []string{"hubspot"},
 			expression: `pat-(?:na1|eu1)-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`,
 			keywords:   []string{"pat-na1-", "pat-eu1-"},
 		},
@@ -1662,6 +2071,8 @@ func rules() []rule {
 			// logic and targeting rules. The existing contextual
 			// `launchdarkly` rule requires the vendor name nearby;
 			// this rule catches bare SDK keys.
+			id:         "launchdarkly-sdk-key",
+			tags:       []string{"launchdarkly"},
 			expression: `sdk-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`,
 			keywords:   []string{"sdk-"},
 		},
@@ -1670,6 +2081,8 @@ func rules() []rule {
 			// tokens use `$`-delimited segments:
 			// `access_token$<env>$<merchant_id>$<token>`. The literal
 			// `$` makes the format highly distinctive.
+			id:         "braintree-access-token",
+			tags:       []string{"braintree"},
 			expression: `access_token\$(?:production|sandbox)\$[a-z0-9]{1,128}\$[a-f0-9]{25,36}`,
 			keywords:   []string{"access_token$"},
 		},
@@ -1680,6 +2093,8 @@ func rules() []rule {
 			// framing stays readable. Templated `${PASSWORD}` /
 			// `{{ .Pass }}` / `<password>` placeholders are excluded
 			// via the leading-char class.
+			id:         "mysql-connection-string",
+			tags:       []string{"mysql", "connection-string"},
 			expression: `mysql://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"mysql://"},
 		},
@@ -1690,6 +2105,8 @@ func rules() []rule {
 			// TLS variant uses the `rediss://` scheme. Only the
 			// password span is redacted; templated placeholders are
 			// excluded via the leading-char class.
+			id:         "redis-connection-string",
+			tags:       []string{"redis", "connection-string"},
 			expression: `rediss?://[^\s:/?#@]*:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"redis://", "rediss://"},
 		},
@@ -1699,6 +2116,8 @@ func rules() []rule {
 			// the TLS variant uses `amqps://`. Only the password
 			// span is redacted; templated placeholders are excluded
 			// via the leading-char class.
+			id:         "amqp-connection-string",
+			tags:       []string{"amqp", "connection-string"},
 			expression: `amqps?://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"amqp://", "amqps://"},
 		},
@@ -1708,6 +2127,8 @@ func rules() []rule {
 			// (`https://<user>:<pass>@gems.contribsys.com`). Only
 			// the password span is redacted so the host stays
 			// readable. Source: gitleaks `sidekiq-sensitive-url`.
+			id:         "sidekiq-sensitive-url",
+			tags:       []string{"sidekiq"},
 			expression: `(?i)https?://[a-f0-9]{8}:(?P<secret>[a-f0-9]{8})@(?:gems|enterprise)\.contribsys\.com`,
 			keywords:   []string{"contribsys.com"},
 		},
@@ -1720,6 +2141,8 @@ func rules() []rule {
 			// and Service Account Tokens (`sat.`) follow the same
 			// three-segment shape; full Harness account access if
 			// leaked. Source: gitleaks `harness-api-key` rule.
+			id:         "harness-api-key",
+			tags:       []string{"harness"},
 			expression: `(?:pat|sat)\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9]{24}\.[A-Za-z0-9]{20}`,
 			keywords:   []string{"pat.", "sat."},
 		},
@@ -1728,6 +2151,8 @@ func rules() []rule {
 			// Face org tokens carry the `api_org_` prefix and a
 			// 34-char alphanumeric body. Still active alongside
 			// the modern `hf_` user tokens already covered.
+			id:         "huggingface-organization-api-token",
+			tags:       []string{"huggingface"},
 			expression: `api_org_[A-Za-z0-9]{34}`,
 			keywords:   []string{"api_org_"},
 		},
@@ -1737,6 +2162,8 @@ func rules() []rule {
 			// and service (`sm_sat_`) access tokens, each with a
 			// 16-char alphanumeric body. Source: gitleaks
 			// `settlemint-{personal,application,service}-access-token`.
+			id:         "settlemint-tokens",
+			tags:       []string{"settlemint"},
 			expression: `sm_(?:pat|aat|sat)_[A-Za-z0-9]{16}`,
 			keywords:   []string{"sm_pat_", "sm_aat_", "sm_sat_"},
 		},
@@ -1747,6 +2174,8 @@ func rules() []rule {
 			// `acc` segment is fixed (case-sensitive in the upstream
 			// rule) which keeps the regex specific. Source: gitleaks
 			// `authress-service-client-access-key`.
+			id:         "authress-service-client-access-key",
+			tags:       []string{"authress"},
 			expression: `(?:sc|ext|scauth|authress)_[A-Za-z0-9]{5,30}\.[A-Za-z0-9]{4,6}\.acc[_-][A-Za-z0-9-]{10,32}\.[A-Za-z0-9+/_=-]{30,120}`,
 			keywords:   []string{"sc_", "ext_", "scauth_", "authress_"},
 		},
@@ -1762,6 +2191,8 @@ func rules() []rule {
 			// docs document the shape `pcsk_<5-6 alnum>_<63 alnum>`.
 			// The existing `pckey_` rule covers a legacy format; this
 			// one fills the gap for the modern issuance.
+			id:         "pinecone-api-key",
+			tags:       []string{"pinecone"},
 			expression: `pcsk_[A-Za-z0-9]{5,6}_[A-Za-z0-9]{63}`,
 			keywords:   []string{"pcsk_"},
 		},
@@ -1769,6 +2200,8 @@ func rules() []rule {
 			// langsmith-api-key. LangChain LangSmith issues personal
 			// (`lsv2_pt_`) and service (`lsv2_sk_`) tokens with a fixed
 			// `<32 hex>_<10 hex>` body.
+			id:         "langsmith-api-key",
+			tags:       []string{"langsmith"},
 			expression: `lsv2_(?:pt|sk)_[a-f0-9]{32}_[a-f0-9]{10}`,
 			keywords:   []string{"lsv2_pt_", "lsv2_sk_"},
 		},
@@ -1776,6 +2209,8 @@ func rules() []rule {
 			// nvidia-nim-api-key. NVIDIA's hosted-inference (NIM /
 			// build.nvidia.com) keys carry the `nvapi-` prefix and a
 			// 64-char alphanumeric body.
+			id:         "nvidia-nim-api-key",
+			tags:       []string{"nvidia"},
 			expression: `nvapi-[A-Za-z0-9_-]{64}`,
 			keywords:   []string{"nvapi-"},
 		},
@@ -1783,6 +2218,8 @@ func rules() []rule {
 			// nightfall-api-key. The Nightfall DLP platform issues
 			// keys shaped `NF-<32 alnum>` — the `NF-` prefix is rare
 			// enough at scale to keep the AC pre-filter selective.
+			id:            "nightfall-api-key",
+			tags:          []string{"nightfall"},
 			expression:    `NF-[A-Za-z0-9]{32}`,
 			keywords:      []string{"NF-"},
 			caseSensitive: true,
@@ -1790,6 +2227,8 @@ func rules() []rule {
 		{
 			// zapier-webhook. Catch hooks let any caller post arbitrary
 			// JSON into a Zap; URL = bearer credential.
+			id:         "zapier-webhook",
+			tags:       []string{"zapier", "webhook"},
 			expression: `https://hooks\.zapier\.com/hooks/catch/[A-Za-z0-9/]{16,}`,
 			keywords:   []string{"hooks.zapier.com"},
 		},
@@ -1797,6 +2236,8 @@ func rules() []rule {
 			// tines-webhook. The full URL is a bearer credential —
 			// any caller can trigger the storyboard. The hostname /
 			// path shape is documented by Tines.
+			id:         "tines-webhook",
+			tags:       []string{"tines", "webhook"},
 			expression: `https://[\w-]+\.tines\.com/webhook/[a-z0-9]{32}/[a-z0-9]{32}`,
 			keywords:   []string{".tines.com/webhook/"},
 		},
@@ -1804,23 +2245,31 @@ func rules() []rule {
 			// pubnub-publish-key. PubNub publish keys carry the `pub-c-`
 			// prefix and a UUID-shaped body. Leakage allows publishing
 			// to the customer's channels.
+			id:         "pubnub-publish-key",
+			tags:       []string{"pubnub"},
 			expression: `pub-c-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
 			keywords:   []string{"pub-c-"},
 		},
 		{
 			// pubnub-subscription-key. Pair with the publish key above.
+			id:         "pubnub-subscription-key",
+			tags:       []string{"pubnub"},
 			expression: `sub-c-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
 			keywords:   []string{"sub-c-"},
 		},
 		{
 			// rootly-api-token. Incident-management API tokens carry
 			// the `rootly_` prefix and a 64-char hex body.
+			id:         "rootly-api-token",
+			tags:       []string{"rootly"},
 			expression: `rootly_[a-f0-9]{64}`,
 			keywords:   []string{"rootly_"},
 		},
 		{
 			// voiceflow-api-key. Project / dialog manager / WS-API keys
 			// share the `VF.<channel?>.<24 hex>.<16 alnum>` shape.
+			id:            "voiceflow-api-key",
+			tags:          []string{"voiceflow"},
 			expression:    `VF\.(?:(?:DM|WS)\.)?[a-fA-F0-9]{24}\.[A-Za-z0-9]{16}`,
 			keywords:      []string{"VF."},
 			caseSensitive: true,
@@ -1828,12 +2277,16 @@ func rules() []rule {
 		{
 			// deno-deploy-token. Deno Deploy issues personal (`ddp_`)
 			// and write (`ddw_`) tokens with a fixed 36-char body.
+			id:         "deno-deploy-token",
+			tags:       []string{"deno"},
 			expression: `dd[pw]_[A-Za-z0-9]{36}`,
 			keywords:   []string{"ddp_", "ddw_"},
 		},
 		{
 			// ubidots-token. IoT-platform tokens carry the `BBFF-`
 			// prefix and a 30-char alphanumeric body.
+			id:            "ubidots-token",
+			tags:          []string{"ubidots"},
 			expression:    `BBFF-[A-Za-z0-9]{30}`,
 			keywords:      []string{"BBFF-"},
 			caseSensitive: true,
@@ -1842,6 +2295,8 @@ func rules() []rule {
 			// circleci-personal-access-token-v2. The 2024 token format
 			// (`CCIPAT_<22 alnum>_<40 hex>`) replaces the legacy 40-hex
 			// PAT shape; complements the `CCIPRJ_` project-token rule.
+			id:            "circleci-personal-access-token-v2",
+			tags:          []string{"circleci"},
 			expression:    `CCIPAT_[A-Za-z0-9]{22}_[a-fA-F0-9]{40}`,
 			keywords:      []string{"CCIPAT_"},
 			caseSensitive: true,
@@ -1849,6 +2304,8 @@ func rules() []rule {
 		{
 			// endorlabs-api-token. Endor Labs supply-chain platform
 			// keys carry the `endr+` prefix and a 16-char body.
+			id:         "endorlabs-api-token",
+			tags:       []string{"endorlabs"},
 			expression: `endr\+[A-Za-z0-9-]{16}`,
 			keywords:   []string{"endr+"},
 		},
@@ -1858,6 +2315,8 @@ func rules() []rule {
 			// terminated by an 8-char hex CRC. We cap the body at 200
 			// chars to keep the regex from absorbing trailing text
 			// when the password isn't whitespace-terminated.
+			id:            "bitbucket-app-password",
+			tags:          []string{"bitbucket"},
 			expression:    `ATBB[A-Za-z0-9_=.-]{20,200}`,
 			keywords:      []string{"ATBB"},
 			caseSensitive: true,
@@ -1867,6 +2326,8 @@ func rules() []rule {
 			// `pi_<24>_secret_<25>` are returned to the browser to
 			// confirm a PaymentIntent — leakage in logs lets attackers
 			// confirm payments and tamper with the intent.
+			id:         "stripe-payment-intent-client-secret",
+			tags:       []string{"stripe"},
 			expression: `pi_[A-Za-z0-9]{24}_secret_[A-Za-z0-9]{25}`,
 			keywords:   []string{"_secret_"},
 		},
@@ -1875,6 +2336,8 @@ func rules() []rule {
 			// enterprise platform issues `thog-key-<16 hex>` access keys
 			// alongside `thog-secret-<32 hex>` secrets. Each carries a
 			// distinctive prefix; redact both.
+			id:         "trufflehog-enterprise-credentials",
+			tags:       []string{"trufflehog"},
 			expression: `thog-(?:key-[a-f0-9]{16}|secret-[a-f0-9]{32})`,
 			keywords:   []string{"thog-key-", "thog-secret-"},
 		},
@@ -1882,6 +2345,8 @@ func rules() []rule {
 			// ramp-api-credentials. Ramp (corporate cards) issues a
 			// `ramp_id_<40>` API ID alongside a `ramp_sec_<48>` secret;
 			// both carry distinctive prefixes.
+			id:         "ramp-api-credentials",
+			tags:       []string{"ramp"},
 			expression: `ramp_(?:id_[A-Za-z0-9]{40}|sec_[A-Za-z0-9]{48})`,
 			keywords:   []string{"ramp_id_", "ramp_sec_"},
 		},
@@ -1890,6 +2355,8 @@ func rules() []rule {
 			// `s-s4t2(ud|af)-<64 hex>` secrets and `u-s4t2(ud|af)-<64
 			// hex>` IDs; the literal `-s4t2` infix is unique enough that
 			// neither half needs surrounding context.
+			id:         "intra42-api-credentials",
+			tags:       []string{"intra42"},
 			expression: `[su]-s4t2(?:ud|af)-[a-f0-9]{64}`,
 			keywords:   []string{"-s4t2ud-", "-s4t2af-"},
 		},
@@ -1898,6 +2365,8 @@ func rules() []rule {
 			// `flutterwave-public-key` rule only matches `*_TEST-` keys;
 			// production keys use `FLWSECK-<32 hex>-X` (no `_TEST`
 			// segment) and grant live API access.
+			id:            "flutterwave-live-secret-key",
+			tags:          []string{"flutterwave"},
 			expression:    `FLWSECK-[a-f0-9]{32}-X`,
 			keywords:      []string{"FLWSECK-"},
 			caseSensitive: true,
@@ -1906,6 +2375,8 @@ func rules() []rule {
 			// slack-workflow-webhook. Workflow Builder webhooks have a
 			// different path shape than the legacy `services/...`
 			// webhooks already covered: `workflows/<T..>/<A..>/<id>/<token>`.
+			id:         "slack-workflow-webhook",
+			tags:       []string{"slack", "webhook"},
 			expression: `https://hooks\.slack\.com/workflows/T[A-Z0-9]+/A[A-Z0-9]+/[0-9]{17,19}/[A-Za-z0-9]{20,30}`,
 			keywords:   []string{"hooks.slack.com/workflows"},
 		},
@@ -1913,12 +2384,16 @@ func rules() []rule {
 			// sourcegraph-cody-key. Sourcegraph's Cody assistant keys
 			// (`slk_<64 hex>`) authenticate the IDE / API integrations
 			// against the Cody gateway.
+			id:         "sourcegraph-cody-key",
+			tags:       []string{"sourcegraph"},
 			expression: `slk_[a-f0-9]{64}`,
 			keywords:   []string{"slk_"},
 		},
 		{
 			// daytona-api-key. Daytona API keys carry the `dtn_`
 			// prefix followed by a 64-character lowercase-hex body.
+			id:         "daytona-api-key",
+			tags:       []string{"daytona"},
 			expression: `dtn_[a-f0-9]{64}`,
 			keywords:   []string{"dtn_"},
 		},
@@ -1926,6 +2401,8 @@ func rules() []rule {
 			// blaxel-api-key. Blaxel API keys carry the `bl_`
 			// prefix followed by a 32-character lowercase
 			// alphanumeric body.
+			id:         "blaxel-api-key",
+			tags:       []string{"blaxel"},
 			expression: `bl_[a-z0-9]{32}`,
 			keywords:   []string{"bl_"},
 		},
@@ -1942,6 +2419,8 @@ func rules() []rule {
 			// (`sq0csp-<43>`) carry distinctive `sq0` prefixes — unlike
 			// the bare-base64 `EAAA` access-token form that was removed
 			// for false positives.
+			id:         "square-oauth-credentials",
+			tags:       []string{"square"},
 			expression: `sq0(?:atp-[0-9A-Za-z_-]{22}|csp-[0-9A-Za-z_-]{43})`,
 			keywords:   []string{"sq0atp-", "sq0csp-"},
 		},
@@ -1950,6 +2429,8 @@ func rules() []rule {
 			// `API-<26-30 uppercase alnum>`. The case-sensitive keyword
 			// keeps the common lowercase `api-` prose prefix from
 			// reaching the regex.
+			id:            "octopus-deploy-api-key",
+			tags:          []string{"octopus-deploy"},
 			expression:    `API-[A-Z0-9]{26,30}`,
 			keywords:      []string{"API-"},
 			caseSensitive: true,
@@ -1959,9 +2440,11 @@ func rules() []rule {
 			// common issuer prefixes with optional spaces / dashes, then
 			// require a valid Luhn checksum so ordinary 13-19 digit IDs do
 			// not get redacted as cards.
+			id:         "credit-card-number",
 			expression: `(?P<secret>\b(?:4\d{3}|5[1-5]\d{2}|2[2-7]\d{2}|3[47]\d{2}|6(?:011|5\d{2})|3(?:0[0-5]|[68]\d)\d)(?:[-\s]?\d){9,15}\b)`,
 			validator:  validLuhn,
 			prefilter:  maybeCreditCard,
+			tags:       []string{"pii"},
 		},
 		{
 			// iban. Mirrors memclaw's IBAN detector: broad ISO 13616
@@ -1969,17 +2452,21 @@ func rules() []rule {
 			// would let a match run into the next line), gated by the
 			// registered country code and length and the official mod-97
 			// checksum to avoid flagging arbitrary account-like strings.
+			id:         "iban",
 			expression: `(?i)(?P<secret>\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b)`,
 			validator:  validIBAN,
 			prefilter:  maybeIBAN,
+			tags:       []string{"pii"},
 		},
 		{
 			// us-ssn. Mirrors memclaw's national-ID rule for US Social
 			// Security numbers, with validation excluding the known-invalid
 			// area / group / serial ranges (000, 666, 9xx, 00, 0000).
+			id:         "us-ssn",
 			expression: `(?P<secret>\b\d{3}[- ]?\d{2}[- ]?\d{4}\b)`,
 			validator:  validUSSSN,
 			prefilter:  maybeSSN,
+			tags:       []string{"pii"},
 		},
 
 		{
@@ -1987,6 +2474,8 @@ func rules() []rule {
 			// shaped `secret-(live|test)-<~44 base64url chars incl. `=`
 			// padding>`; the environment-tagged prefix is unique to the
 			// product.
+			id:         "stytch-secret",
+			tags:       []string{"stytch"},
 			expression: `secret-(?:live|test)-[A-Za-z0-9_=-]{40,50}`,
 			keywords:   []string{"secret-live-", "secret-test-"},
 		},
@@ -1995,58 +2484,80 @@ func rules() []rule {
 			// exoscale-api-key. Exoscale IAM API keys start with EXO followed
 			// by 21-25 hex characters. Constrained to hex to avoid false
 			// positives on general uppercase English constants (e.g. EXOPLANET).
+			id:            "exoscale-api-key",
+			tags:          []string{"exoscale"},
 			expression:    asSecretGroup(`(?P<secret>EXO[0-9a-fA-F]{21,25})\b`),
 			keywords:      []string{"EXO"},
 			caseSensitive: true,
 		},
 		{
 			// exoscale-hmac-auth. Exoscale v2 HMAC authentication header.
+			id:         "exoscale-hmac-auth",
+			tags:       []string{"exoscale"},
 			expression: `(?i)Authorization:\s*EXO2-HMAC-SHA256\s+credential=(?P<secret>[^\s,]+)`,
 			keywords:   []string{"EXO2-HMAC-SHA256"},
 		},
 		{
 			// exoscale-secret. Exoscale API secret or key in assignments.
+			id:         "exoscale-secret",
+			tags:       []string{"exoscale"},
 			expression: contextual(`exoscale`, `[A-Za-z0-9_\-]{30,60}`),
 			keywords:   []string{"exoscale"},
 		},
 		{
 			// divio-pak. Divio Personal API Key (PAK) starts with divio_pak_
 			// followed by 43 URL-safe base64 characters (256 bits entropy).
+			id:         "divio-pak",
+			tags:       []string{"divio"},
 			expression: asSecretGroup(`?P<secret>divio_pak_[0-9a-zA-Z_\-]{43}`),
 			keywords:   []string{"divio_pak_"},
 		},
 		{
 			// nessus-api-keys. Nessus/Tenable accessKey and secretKey in headers or assignments.
+			id:         "nessus-api-keys",
+			tags:       []string{"nessus"},
 			expression: `(?i)\b(?:accessKey|secretKey)\s*=\s*(?P<secret>[a-f0-9]{64})`,
 			keywords:   []string{"accesskey=", "secretkey="},
 		},
 		{
 			// nessus-contextual. Nessus API keys in assignments.
+			id:         "nessus-contextual",
+			tags:       []string{"nessus"},
 			expression: contextual(`nessus`, `[a-f0-9]{64}`),
 			keywords:   []string{"nessus"},
 		},
 		{
 			// postgres-env-password. Standard Postgres environment variables carrying passwords.
+			id:         "postgres-env-password",
+			tags:       []string{"postgres"},
 			expression: `(?i)\b(?:PGPASSWORD|POSTGRES_PASSWORD|POSTGRESQL_PASSWORD|PGPASS)\s*[:=]\s*["']?(?P<secret>[^\s"']+)["']?`,
 			keywords:   []string{"PGPASSWORD", "POSTGRES_PASSWORD", "POSTGRESQL_PASSWORD", "PGPASS"},
 		},
 		{
 			// postgres-pgpass. Lines in .pgpass files: hostname:port:database:username:password.
+			id:         "postgres-pgpass",
+			tags:       []string{"postgres"},
 			expression: `(?m)^(?:[a-zA-Z0-9_.-]+|\*):(?:[0-9]+|\*):(?:[a-zA-Z0-9_.-]+|\*):(?:[a-zA-Z0-9_.-]+|\*):(?P<secret>[^\r\n]+)$`,
 			keywords:   []string{":5432:", ":5433:"},
 		},
 		{
 			// cloudflare-scannable-token. Modern Cloudflare API tokens with cfk_, cfut_, cfat_, cfast_ prefixes.
+			id:         "cloudflare-scannable-token",
+			tags:       []string{"cloudflare"},
 			expression: asSecretGroup(`(?P<secret>cf(?:k|ut|at|ast)_[a-zA-Z0-9]{40,})`),
 			keywords:   []string{"cfk_", "cfut_", "cfat_", "cfast_"},
 		},
 		{
 			// http-basic-auth. HTTP/HTTPS URI authority carrying user:password.
+			id:         "http-basic-auth",
+			tags:       []string{"url-credentials"},
 			expression: `https?://[^\s:/?#@]+:(?P<secret>[^\s@${<%][^\s@]{0,199})@`,
 			keywords:   []string{"http://", "https://"},
 		},
 		{
 			// url-query-secret. Secret tokens passed via URL query parameters.
+			id:         "url-query-secret",
+			tags:       []string{"url-credentials"},
 			expression: `(?i)[?&](?:access_token|api_key|apikey|auth_token|x-amz-signature|x-amz-credential)=(?P<secret>[^&#\s]+)`,
 			keywords:   []string{"access_token=", "api_key=", "apikey=", "auth_token=", "x-amz-signature=", "x-amz-credential="},
 		},
@@ -2077,6 +2588,8 @@ type compiledRule struct {
 	caseSensitive bool
 	csKW          []string
 	prefilter     func(string) bool
+	id            string
+	tags          []string
 	compile       func() compiledMatch // memoised
 }
 
@@ -2108,16 +2621,14 @@ func (r *compiledRule) passes(found kwMask, text string) bool {
 }
 
 // ruleSet bundles the runtime catalogue with the Aho–Corasick
-// pre-filter built from its (de-duplicated) keyword set and records
-// whether any rules intentionally bypass that pre-filter. They live
+// pre-filter built from its (de-duplicated) keyword set. They live
 // behind a single [sync.OnceValue] so neither piece of state is
 // constructed until the first scan that actually needs it; per-rule
 // regex compilation is further deferred via
 // [compiledRule.compile].
 type ruleSet struct {
-	rules        []compiledRule
-	ac           *acAutomaton
-	hasAlwaysRun bool
+	rules []compiledRule
+	ac    *acAutomaton
 }
 
 var compiledRuleSet = sync.OnceValue(func() *ruleSet {
@@ -2140,12 +2651,8 @@ var compiledRuleSet = sync.OnceValue(func() *ruleSet {
 	}
 
 	rules := make([]compiledRule, len(src))
-	hasAlwaysRun := false
 	for i, r := range src {
 		var bits kwMask
-		if len(r.keywords) == 0 {
-			hasAlwaysRun = true
-		}
 		for _, k := range r.keywords {
 			bits.set(kwIdx[strings.ToLower(k)])
 		}
@@ -2156,11 +2663,13 @@ var compiledRuleSet = sync.OnceValue(func() *ruleSet {
 			caseSensitive: r.caseSensitive,
 			csKW:          r.keywords,
 			prefilter:     r.prefilter,
+			id:            r.id,
+			tags:          r.tags,
 			compile: sync.OnceValue(func() compiledMatch {
 				re := regexp.MustCompile(expr)
 				return compiledMatch{re: re, secretIdx: re.SubexpIndex("secret"), validator: validator}
 			}),
 		}
 	}
-	return &ruleSet{rules: rules, ac: buildAhoCorasick(uniq), hasAlwaysRun: hasAlwaysRun}
+	return &ruleSet{rules: rules, ac: buildAhoCorasick(uniq)}
 })
