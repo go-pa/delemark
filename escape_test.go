@@ -21,7 +21,7 @@ func TestRedactKeepsEscapes(t *testing.T) {
 		{`POSTGRES_PASSWORD=s3cr3tpassw0rd\\\"x"`, `POSTGRES_PASSWORD=[REDACTED]\"x"`},
 		{`POSTGRES_PASSWORD=s3cr3tpassw0rd\\ x`, `POSTGRES_PASSWORD=[REDACTED] x`},
 	} {
-		assert.Equal(t, tc.want, delemark.Redact(tc.in))
+		assert.Equal(t, tc.want, testRedactor.Redact(tc.in))
 		assert.True(t, delemark.Contains(tc.in))
 	}
 

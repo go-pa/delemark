@@ -76,7 +76,7 @@ func asSecretGroup(str string) string {
 // contextual builds a vendor-anchored rule that matches a known vendor
 // followed by assignment context and a value of the given shape. Only the value
 // span (the named `?P<secret>` subgroup) is redacted, so log readers
-// still see the assignment context (`SNYK_TOKEN=[REDACTED]`).
+// still see the assignment context (`SNYK_TOKEN=REDACTED`).
 //
 // The frame matches the gitleaks default-rule template, starting at
 // the vendor word: its optional leading context cannot affect secret

@@ -16,7 +16,7 @@ func ExampleRedact() {
 
 	fmt.Println(delemark.Redact(log))
 	// Output:
-	// Run this with token=[REDACTED] please.
+	// Run this with token=REDACTED please.
 }
 
 func ExampleRedact_connectionString() {
@@ -26,7 +26,7 @@ func ExampleRedact_connectionString() {
 
 	fmt.Println(delemark.Redact(uri))
 	// Output:
-	// postgresql://app:[REDACTED]@db.internal:5432/orders
+	// postgresql://app:REDACTED@db.internal:5432/orders
 }
 
 func ExampleRedact_multipleSecrets() {
@@ -35,7 +35,7 @@ func ExampleRedact_multipleSecrets() {
 
 	fmt.Println(delemark.Redact(in))
 	// Output:
-	// first [REDACTED] and second [REDACTED] end
+	// first REDACTED and second REDACTED end
 }
 
 func ExampleContains() {

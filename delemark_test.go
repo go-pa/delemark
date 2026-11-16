@@ -592,7 +592,7 @@ func TestRedactHandlesMultipleSecretsInOneInput(t *testing.T) {
 // [delemark.Redact] idempotent and the keyword pre-filter hoist in
 // [delemark.Redact] sound: the literal Marker must not match any
 // detection rule. If a future rule were added whose keyword overlapped
-// "[REDACTED]", redaction would either recurse forever or amplify the
+// "REDACTED", redaction would either recurse forever or amplify the
 // marker on every pass, and any downstream pipeline that calls Redact
 // twice would silently corrupt content.
 func TestMarkerIsNotASecret(t *testing.T) {

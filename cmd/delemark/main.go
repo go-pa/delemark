@@ -29,7 +29,7 @@ Options:
   -list-tags
     	List the tags, then exit
   -placeholder string
-    	Replacement marker for redacted secrets (default: "[REDACTED]")
+    	Replacement marker for redacted secrets (default: "REDACTED")
   -h, -help
     	Show this help message
 

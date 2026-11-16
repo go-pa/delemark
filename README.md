@@ -12,7 +12,7 @@ credentials, and other secret material in arbitrary text.
 import "github.com/go-pa/delemark"
 
 clean := delemark.Redact("Run this with token=ghp_1234567890abcdef1234567890abcdef1234 please.")
-// → "Run this with token=[REDACTED] please."
+// → "Run this with token=REDACTED please."
 
 delemark.Contains("not a secret")                                   // false
 delemark.Contains("token=ghp_1234567890abcdef1234567890abcdef1234") // true
@@ -31,7 +31,7 @@ two design constraints:
   yields a bitset of every keyword present, after which each rule's
   keyword check collapses to two `AND` instructions. Most messages
   never pay for a regex.
-- **Idempotent.** The default marker `[REDACTED]` is chosen so it does
+- **Idempotent.** The default marker `REDACTED` is chosen so it does
   not match any built-in rule; redacting an already-redacted string is
   a no-op, and pipelines that scrub at multiple stages don't amplify.
 
@@ -80,7 +80,7 @@ tail -f app.log | delemark -email
 The public library interface provides both in-memory scanning and stream processing:
 
 ```go
-const Marker = "[REDACTED]"
+const Marker = "REDACTED"
 
 func Contains(text string) bool                           // detect
 func Redact(text string) string                           // scrub

@@ -87,7 +87,7 @@ func TestCustomRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := delemark.Redact(tt.input)
+			got := testRedactor.Redact(tt.input)
 			require.Equal(t, tt.expected, got)
 		})
 	}

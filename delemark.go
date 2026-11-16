@@ -16,7 +16,7 @@ import (
 // Marker replaces every detected secret span. Chosen so it doesn't
 // match any rule's keyword pre-filter — see TestMarkerIsNotASecret
 // for the safety property that makes [Redact] idempotent.
-const Marker = "[REDACTED]"
+const Marker = "REDACTED"
 
 // Match describes a single secret span detected in an input. Start
 // and End are byte offsets into the original text and delimit the
@@ -53,6 +53,10 @@ func WithSkip(names ...string) Option {
 // WithMarker replaces every redacted span with marker rather than
 // [Marker]; empty is [Marker]. A marker that some rule matches makes
 // [Redactor.Redact] no longer idempotent.
+//
+// A marker in brackets, such as "[REDACTED]", changes the type of an
+// unquoted YAML value: "password: [REDACTED]" is a one-element list,
+// not a string, and breaks whatever loads the redacted document.
 func WithMarker(marker string) Option {
 	return func(c *config) { c.marker = marker }
 }
@@ -369,7 +373,7 @@ func (r *Redactor) ContainsBytes(b []byte) bool {
 // Redact returns a copy of text with every detected secret span
 // replaced by [Marker]. When a rule defines a (?P<secret>…) named
 // subgroup, only that span is replaced (so callers still see
-// "AWS_SECRET_ACCESS_KEY=[REDACTED]"); otherwise the whole match is
+// "AWS_SECRET_ACCESS_KEY=REDACTED"); otherwise the whole match is
 // replaced.
 //
 // Idempotent: [Marker] does not match any rule, so calling Redact
@@ -491,7 +495,7 @@ var reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]
 // also skip rules.
 type StreamOptions struct {
 	RedactEmail bool
-	Marker      string // replacement marker (default: Marker "[REDACTED]")
+	Marker      string // replacement marker (default: Marker "REDACTED")
 }
 
 // fromStreamOptions returns the Redactor the deprecated functions taking opts

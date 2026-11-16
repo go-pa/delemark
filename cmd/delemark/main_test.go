@@ -12,12 +12,16 @@ import (
 	"github.com/go-pa/delemark"
 )
 
+// testPlaceholder sets the marker the tests' literal expectations are
+// written in, so they do not change with [delemark.Marker].
+const testPlaceholder = "-placeholder=[REDACTED]"
+
 func TestCLIBasicStdin(t *testing.T) {
 	token := "dckr_pat_" + strings.Repeat("A", 27)
 	stdin := strings.NewReader("docker token: " + token + "\n")
 	var stdout, stderr bytes.Buffer
 
-	code := run(nil, stdin, &stdout, &stderr)
+	code := run([]string{testPlaceholder}, stdin, &stdout, &stderr)
 	require.Equal(t, 0, code)
 	require.Empty(t, stderr.String())
 	require.Equal(t, "docker token: [REDACTED]\n", stdout.String())
@@ -35,7 +39,7 @@ func TestCLIEmailFlag(t *testing.T) {
 	// With -email
 	stdin = strings.NewReader("contact test@example.com for info\n")
 	var stdout2, stderr2 bytes.Buffer
-	code2 := run([]string{"-email"}, stdin, &stdout2, &stderr2)
+	code2 := run([]string{testPlaceholder, "-email"}, stdin, &stdout2, &stderr2)
 	require.Equal(t, 0, code2)
 	require.Equal(t, "contact [REDACTED] for info\n", stdout2.String())
 }
@@ -58,7 +62,7 @@ func TestCLIFileArgs(t *testing.T) {
 	require.NoError(t, err)
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{filePath}, strings.NewReader(""), &stdout, &stderr)
+	code := run([]string{testPlaceholder, filePath}, strings.NewReader(""), &stdout, &stderr)
 	require.Equal(t, 0, code)
 	require.Empty(t, stderr.String())
 	require.Equal(t, "line with token [REDACTED]\n", stdout.String())
@@ -75,12 +79,12 @@ func TestCLISkipFlag(t *testing.T) {
 	const line = "card 4111 1111 1111 1111 db postgres://app:s3cr3tpass@db/app\n"
 
 	var stdout, stderr bytes.Buffer
-	code := run(nil, strings.NewReader(line), &stdout, &stderr)
+	code := run([]string{testPlaceholder}, strings.NewReader(line), &stdout, &stderr)
 	require.Equal(t, 0, code)
 	require.Equal(t, "card [REDACTED] db postgres://app:[REDACTED]@db/app\n", stdout.String())
 
 	stdout.Reset()
-	code = run([]string{"-skip", "pii"}, strings.NewReader(line), &stdout, &stderr)
+	code = run([]string{testPlaceholder, "-skip", "pii"}, strings.NewReader(line), &stdout, &stderr)
 	require.Equal(t, 0, code)
 	require.Empty(t, stderr.String())
 	require.Equal(t, "card 4111 1111 1111 1111 db postgres://app:[REDACTED]@db/app\n", stdout.String())

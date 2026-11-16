@@ -17,7 +17,7 @@ func TestEmailRedaction(t *testing.T) {
 	require.Equal(t, input, gotNoEmail)
 
 	// With email redaction
-	gotEmail := delemark.RedactWith(input, delemark.StreamOptions{RedactEmail: true})
+	gotEmail := delemark.RedactWith(input, delemark.StreamOptions{RedactEmail: true, Marker: testMarker})
 	expected := "Send support email to [REDACTED] or [REDACTED]."
 	require.Equal(t, expected, gotEmail)
 }
@@ -42,7 +42,7 @@ func TestStreamBasic(t *testing.T) {
 	input := "Normal line 1\nDocker token " + token + "\nNormal line 2\n"
 	var out bytes.Buffer
 
-	err := delemark.Stream(strings.NewReader(input), &out)
+	err := testRedactor.Stream(strings.NewReader(input), &out)
 	require.NoError(t, err)
 
 	expected := "Normal line 1\nDocker token [REDACTED]\nNormal line 2\n"

@@ -12,9 +12,25 @@ import (
 	"github.com/go-pa/delemark"
 )
 
+// testMarker is the marker the tests' literal expectations are written
+// in, so they do not change with [delemark.Marker].
+const testMarker = "[REDACTED]"
+
+// testRedactor redacts like the package-level functions, but with
+// testMarker.
+var testRedactor = func() *delemark.Redactor {
+	r, err := delemark.New(delemark.WithMarker(testMarker))
+	if err != nil {
+		panic(err)
+	}
+	return r
+}()
+
+// newRedactor returns a Redactor made with opts, with testMarker
+// unless opts set a marker of their own.
 func newRedactor(tb testing.TB, opts ...delemark.Option) *delemark.Redactor {
 	tb.Helper()
-	r, err := delemark.New(opts...)
+	r, err := delemark.New(append([]delemark.Option{delemark.WithMarker(testMarker)}, opts...)...)
 	require.NoError(tb, err)
 	return r
 }
@@ -126,7 +142,8 @@ func TestNewRejectsUnknownNames(t *testing.T) {
 func TestDefaultRedactorMatchesPackageFunctions(t *testing.T) {
 	t.Parallel()
 
-	r := newRedactor(t)
+	r, err := delemark.New()
+	require.NoError(t, err)
 	for _, in := range []string{
 		"",
 		"nothing to see",
