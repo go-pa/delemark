@@ -71,6 +71,8 @@ type Redactor struct {
 	// Redactor.
 	ac    *acAutomaton
 	rules []*compiledRule
+	// index finds the rules the keywords of an input can pass.
+	index ruleIndex
 	// alwaysRun is whether a rule of rules bypasses the keyword
 	// pre-filter. Without one, an input without a keyword runs no regex.
 	alwaysRun bool
@@ -105,6 +107,7 @@ func New(opts ...Option) (*Redactor, error) {
 	r := &Redactor{
 		ac:          rs.ac,
 		rules:       make([]*compiledRule, 0, len(rs.rules)),
+		index:       newRuleIndex(rs.keywords),
 		marker:      cmp.Or(c.marker, Marker),
 		redactEmail: c.redactEmail,
 	}
@@ -124,6 +127,7 @@ func New(opts ...Option) (*Redactor, error) {
 		if skipped {
 			continue
 		}
+		r.index.add(len(r.rules), cr)
 		r.rules = append(r.rules, cr)
 		if cr.kwBits.empty() {
 			r.alwaysRun = true
@@ -229,7 +233,9 @@ func (r *Redactor) findMatches(text string) []Match {
 		return nil
 	}
 	var matches []Match
-	for _, cr := range r.rules {
+	cand := r.index.candidates(&found)
+	for i := range cand.all() {
+		cr := r.rules[i]
 		if !cr.passes(found, text) {
 			continue
 		}
@@ -304,7 +310,9 @@ func (r *Redactor) Contains(text string) bool {
 	if !ok {
 		return false
 	}
-	for _, cr := range r.rules {
+	cand := r.index.candidates(&found)
+	for i := range cand.all() {
+		cr := r.rules[i]
 		if !cr.passes(found, text) {
 			continue
 		}

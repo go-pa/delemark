@@ -2629,10 +2629,16 @@ func (r *compiledRule) passes(found kwMask, text string) bool {
 type ruleSet struct {
 	rules []compiledRule
 	ac    *acAutomaton
+	// keywords is the number of distinct keywords, the indices of kwMask
+	// that are in use.
+	keywords int
 }
 
 var compiledRuleSet = sync.OnceValue(func() *ruleSet {
 	src := rules()
+	if len(src) > len(ruleMask{})*64 {
+		panic("delemark: too many rules for ruleMask")
+	}
 
 	// Assign an index to every distinct (lower-cased) keyword. Rules
 	// share keywords like "discord" or "bitbucket" — deduplication
@@ -2671,5 +2677,5 @@ var compiledRuleSet = sync.OnceValue(func() *ruleSet {
 			}),
 		}
 	}
-	return &ruleSet{rules: rules, ac: buildAhoCorasick(uniq)}
+	return &ruleSet{rules: rules, ac: buildAhoCorasick(uniq), keywords: len(uniq)}
 })

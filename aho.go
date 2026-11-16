@@ -3,18 +3,18 @@ package delemark
 // kwMask is a fixed-size bitset over keyword indices, used to record
 // which patterns occurred in a scanned input and which keywords each
 // rule subscribes to. Storing it as a small array keeps every test
-// branch-free; the cap of len(kwMask)*64 indices (currently 320)
-// accommodates today's catalogue of ~285 unique keywords with limited
-// remaining headroom for future rules (an overflow trips a
-// deterministic panic in [buildAhoCorasick]).
-type kwMask [8]uint64
+// branch-free. It has exactly as many words as the catalogue's unique
+// keywords need, which TestMaskSizesFitCatalogue enforces; an overflow
+// trips a deterministic panic in [buildAhoCorasick]. Resizing it means
+// updating the unrolled operations below.
+type kwMask [5]uint64
 
 func (m *kwMask) empty() bool {
-	return m[0]|m[1]|m[2]|m[3]|m[4]|m[5]|m[6]|m[7] == 0
+	return m[0]|m[1]|m[2]|m[3]|m[4] == 0
 }
 func (m *kwMask) overlaps(other kwMask) bool {
 	return (m[0]&other[0] | m[1]&other[1] | m[2]&other[2] | m[3]&other[3] |
-		m[4]&other[4] | m[5]&other[5] | m[6]&other[6] | m[7]&other[7]) != 0
+		m[4]&other[4]) != 0
 }
 func (m *kwMask) set(idx int) { m[idx>>6] |= 1 << uint(idx&63) }
 func (m *kwMask) orIn(other *kwMask) {
@@ -23,9 +23,6 @@ func (m *kwMask) orIn(other *kwMask) {
 	m[2] |= other[2]
 	m[3] |= other[3]
 	m[4] |= other[4]
-	m[5] |= other[5]
-	m[6] |= other[6]
-	m[7] |= other[7]
 }
 
 // acceptBit is set in a [acAutomaton.next] cell when the destination
